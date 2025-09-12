@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: preparation-ai-db
+    environment:
+      POSTGRES_DB: preparation_ai
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    networks:
+      - preparation-ai-network
+
+  # Redis for caching and sessions
+  redis:
+    image: redis:7-alpine
+    container_name: preparation-ai-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - preparation-ai-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: preparation-ai-backend
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=preparation_ai
+      - DB_SSLMODE=disable
+      - REDIS_URL=redis:6379
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - PORT=8080
+      - OPENAI_API_KEY=your-openai-api-key-here
+      - STRIPE_SECRET_KEY=sk_test_fake_key
+      - STRIPE_PUBLISHABLE_KEY=pk_test_fake_key
+      - STRIPE_WEBHOOK_SECRET=whsec_fake_key
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+    networks:
+      - preparation-ai-network
+    # command: go run cmd/main.go
+
+  # Frontend Development Server
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: preparation-ai-frontend
+    environment:
+      - VITE_API_URL=http://localhost:8080/api/v1
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - preparation-ai-network
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  preparation-ai-network:
+    driver: bridge
