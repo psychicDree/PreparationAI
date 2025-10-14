@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { AxiosInstance, AxiosResponse } from 'axios';
-import { config, getApiUrl } from '../config';
+import { config } from '../config';
 import type {
   AuthResponse,
   LoginRequest,

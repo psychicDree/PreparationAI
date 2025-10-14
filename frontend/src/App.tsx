@@ -19,7 +19,7 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 
 function App() {
-  const { isAuthenticated, setUser, setAuthenticated, setLoading, setError, resetApp } = useAppStore();
+  const { setUser, setAuthenticated, setLoading, setError, resetApp } = useAppStore();
 
   useEffect(() => {
     const initializeAuth = async () => {

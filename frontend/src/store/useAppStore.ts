@@ -5,7 +5,6 @@ import type {
   InterviewSession,
   Question,
   SessionFeedback,
-  SessionType,
   UserResponse,
 } from '../types';
 
@@ -46,7 +45,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       // Initial state
       user: null,
       isAuthenticated: false,

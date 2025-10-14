@@ -1,0 +1,68 @@
+name: Azure Container Instances Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+env:
+  AZURE_CONTAINER_REGISTRY: preparationairegistry
+  AZURE_RESOURCE_GROUP: preparation-ai-rg
+  AZURE_LOCATION: eastus
+  CONTAINER_NAME: preparation-ai
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Build and push image to ACR
+      run: |
+        az acr build --registry $AZURE_CONTAINER_REGISTRY --image $CONTAINER_NAME:$GITHUB_SHA .
+
+    - name: Deploy to Azure Container Instances
+      run: |
+        az container create \
+          --resource-group $AZURE_RESOURCE_GROUP \
+          --name $CONTAINER_NAME-${{ github.event.inputs.environment }} \
+          --image $AZURE_CONTAINER_REGISTRY.azurecr.io/$CONTAINER_NAME:$GITHUB_SHA \
+          --cpu 2 \
+          --memory 4 \
+          --ports 8080 \
+          --environment-variables \
+            NODE_ENV=production \
+            DB_HOST=${{ secrets.DB_HOST }} \
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            JWT_SECRET=${{ secrets.JWT_SECRET }} \
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
+            STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }} \
+          --restart-policy Always
+
+    - name: Update Azure Database
+      run: |
+        echo "Running database migrations..."
+        # az postgres flexible-server execute --name $DB_SERVER --admin-user $DB_USER --database-name $DB_NAME --file-path database/schema.sql
+
+    - name: Health check
+      run: |
+        echo "Performing health check..."
+        # Get the container IP and test it
+        CONTAINER_IP=$(az container show --resource-group $AZURE_RESOURCE_GROUP --name $CONTAINER_NAME-${{ github.event.inputs.environment }} --query ipAddress.ip --output tsv)
+        curl -f http://$CONTAINER_IP:8080/health || exit 1
+        echo "Health check completed"

@@ -1,0 +1,110 @@
+name: Database Migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to migrate'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      migration_type:
+        description: 'Migration type'
+        required: true
+        default: 'up'
+        type: choice
+        options:
+        - up
+        - down
+        - status
+
+env:
+  MIGRATION_DIR: ./database
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup PostgreSQL client
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
+
+    - name: Run database migration
+      run: |
+        echo "Running migration: ${{ github.event.inputs.migration_type }}"
+        
+        # Set database connection parameters based on environment
+        if [[ "${{ github.event.inputs.environment }}" == "production" ]]; then
+          DB_HOST="${{ secrets.PROD_DB_HOST }}"
+          DB_USER="${{ secrets.PROD_DB_USER }}"
+          DB_NAME="${{ secrets.PROD_DB_NAME }}"
+          DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}"
+        else
+          DB_HOST="${{ secrets.STAGING_DB_HOST }}"
+          DB_USER="${{ secrets.STAGING_DB_USER }}"
+          DB_NAME="${{ secrets.STAGING_DB_NAME }}"
+          DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
+        fi
+        
+        # Export password for psql
+        export PGPASSWORD="$DB_PASSWORD"
+        
+        # Run migration based on type
+        case "${{ github.event.inputs.migration_type }}" in
+          "up")
+            echo "Applying schema..."
+            psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f "$MIGRATION_DIR/schema.sql"
+            echo "Seeding data..."
+            psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f "$MIGRATION_DIR/seed.sql"
+            ;;
+          "down")
+            echo "Rolling back migrations..."
+            psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+            ;;
+          "status")
+            echo "Checking migration status..."
+            psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c "\dt"
+            ;;
+        esac
+
+    - name: Verify migration
+      run: |
+        echo "Verifying migration completed successfully..."
+        
+        # Set database connection parameters
+        if [[ "${{ github.event.inputs.environment }}" == "production" ]]; then
+          DB_HOST="${{ secrets.PROD_DB_HOST }}"
+          DB_USER="${{ secrets.PROD_DB_USER }}"
+          DB_NAME="${{ secrets.PROD_DB_NAME }}"
+          DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD }}"
+        else
+          DB_HOST="${{ secrets.STAGING_DB_HOST }}"
+          DB_USER="${{ secrets.STAGING_DB_USER }}"
+          DB_NAME="${{ secrets.STAGING_DB_NAME }}"
+          DB_PASSWORD="${{ secrets.STAGING_DB_PASSWORD }}"
+        fi
+        
+        export PGPASSWORD="$DB_PASSWORD"
+        
+        # Check if tables exist
+        TABLE_COUNT=$(psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
+        
+        if [[ "$TABLE_COUNT" -gt 0 ]]; then
+          echo "✅ Migration successful. Found $TABLE_COUNT tables."
+        else
+          echo "❌ Migration failed. No tables found."
+          exit 1
+        fi
+
+    - name: Notify completion
+      run: |
+        echo "Migration ${{ github.event.inputs.migration_type }} completed for ${{ github.event.inputs.environment }} environment"

@@ -1,25 +1,28 @@
 # PreparationAI - AI-Driven Mock Interview Platform
 
-An intelligent mock interview platform that provides personalized interview experiences tailored to specific job requirements and technical skills.
+An intelligent mock interview platform that provides personalized interview experiences tailored to specific job requirements and technical skills. Built with modern web technologies and deployed using cloud-native infrastructure.
 
 ## 🚀 Features
 
-- **AI-Powered Questions**: Generate interview questions based on role, skills, and experience level
+- **AI-Powered Questions**: Generate interview questions based on role, skills, and experience level using OpenAI GPT-4
 - **Real-time Evaluation**: Get instant feedback on technical depth, communication, and problem-solving
 - **Multiple Session Types**: Quick drills (15 min), Standard (30 min), and Deep dive (60 min)
-- **Audio Recording**: Record and transcribe voice responses
+- **Audio Recording**: Record and transcribe voice responses for comprehensive analysis
 - **Progress Tracking**: Monitor improvement over time with detailed analytics
 - **Payment Integration**: Secure payment processing with Stripe
+- **WebSocket Support**: Real-time communication during interviews
+- **Responsive Design**: Modern UI built with React and Tailwind CSS
 
 ## 🏗️ Architecture
 
 ### Frontend
-- **React 18** with TypeScript
+- **React 18** with TypeScript for type safety
 - **Vite** for fast development and building
-- **Tailwind CSS** for styling
+- **Tailwind CSS** for modern styling
 - **Heroicons** for consistent iconography
 - **Zustand** for state management
 - **React Router** for navigation
+- **Axios** for API communication
 
 ### Backend
 - **Go Fiber** for high-performance HTTP server
@@ -28,11 +31,14 @@ An intelligent mock interview platform that provides personalized interview expe
 - **JWT** for authentication
 - **OpenAI GPT-4** for AI-powered features
 - **Stripe** for payment processing
+- **WebSocket** for real-time communication
 
 ### Infrastructure
 - **Docker** for containerization
 - **Docker Compose** for development environment
 - **Nginx** for production serving
+- **GitHub Actions** for CI/CD
+- **Multi-cloud support** (AWS, GCP, Azure, Kubernetes)
 
 ## 📁 Project Structure
 
@@ -59,19 +65,32 @@ PreparationAI/
 │   ├── pkg/                # Shared packages
 │   └── go.mod              # Go dependencies
 ├── database/               # Database migrations and seeds
-├── docs/                   # Project documentation
+├── k8s/                    # Kubernetes deployment manifests
+├── infrastructure/         # Infrastructure as code
+├── scripts/               # Deployment and setup scripts
+├── .github/workflows/      # GitHub Actions CI/CD
 └── docker-compose.yml      # Development environment
 ```
 
-## 🚀 Quick Start
+## 🛠️ Prerequisites
 
-### Prerequisites
-
+### Required Software
 - **Node.js** 18+ and npm
 - **Go** 1.21+
 - **Docker** and Docker Compose
-- **PostgreSQL** 15+ (or use Docker)
-- **Redis** (or use Docker)
+- **Git** for version control
+
+### Required Accounts
+- **OpenAI** account for AI features
+- **Stripe** account for payments
+- **Cloud Provider** account (AWS, GCP, Azure, or Kubernetes cluster)
+
+### Optional Tools
+- **Terraform** for infrastructure as code
+- **kubectl** for Kubernetes deployments
+- **Cloud CLI tools** (AWS CLI, gcloud, az)
+
+## 🚀 Quick Start
 
 ### 1. Clone and Setup
 
@@ -79,10 +98,8 @@ PreparationAI/
 git clone <repository-url>
 cd PreparationAI
 
-# Setup environment
-./scripts/setup-env.sh  # Automated setup
-# OR manually:
-cp env.example .env
+# Run automated setup
+./scripts/init.sh
 ```
 
 ### 2. Configure Environment
@@ -90,11 +107,16 @@ cp env.example .env
 The setup script will generate a secure JWT secret. Edit `.env` file with your API keys:
 
 ```bash
-# Database (already configured)
-DB_HOST=localhost
-DB_PASSWORD=password
+# Copy environment template
+cp env.example .env
 
-# OpenAI API (required)
+# Edit with your values
+nano .env
+```
+
+**Required API Keys:**
+```env
+# OpenAI API (required for AI features)
 OPENAI_API_KEY=your-openai-api-key
 
 # Stripe (required for payments)
@@ -102,47 +124,39 @@ STRIPE_SECRET_KEY=your-stripe-secret-key
 STRIPE_PUBLISHABLE_KEY=your-stripe-publishable-key
 ```
 
-### 3. Start Database
+### 3. Start Development Environment
 
 ```bash
-# Start PostgreSQL with Docker
-docker run --name preparation-ai-postgres -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres:15
+# Start all services with Docker Compose
+docker-compose up -d
 
-# Create database
-psql -h localhost -U postgres -d postgres -c "CREATE DATABASE preparation_ai;"
+# Check status
+docker-compose ps
+
+# View logs
+docker-compose logs -f
 ```
 
-### 4. Start Development Servers
+### 4. Access the Application
 
-#### Backend (Terminal 1)
-```bash
-cd backend
-go mod download
-go run cmd/main.go
-# Server runs on http://localhost:8080
-```
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:8080
+- **Health Check**: http://localhost:8080/health
+- **PostgreSQL**: localhost:5432
+- **Redis**: localhost:6379
 
-#### Frontend (Terminal 2)
-```bash
-cd frontend
-npm install
-npm run dev
-# Frontend runs on http://localhost:5173
-```
+## 🎨 User Flow
 
-### 5. Verify Setup
+The application follows a 7-screen wireframe flow:
 
-```bash
-# Test backend
-curl http://localhost:8080/health
-
-# Test frontend
-open http://localhost:5173
-
-# Test database connection
-cd backend
-go run cmd/validate-config.go
-```
+1. **Landing Page** - Role input and sample question preview
+2. **Onboarding** - User authentication and registration
+3. **Role Setup** - Skill tags and industry/role selection
+4. **Warmup** - Experience level and preference calibration
+5. **Payment** - Session type selection and pricing
+6. **Interview Dashboard** - Real-time interview with timer
+7. **Feedback** - Detailed scoring and recommendations
+8. **Dashboard** - Progress tracking and session history
 
 ## 🌐 API Endpoints
 
@@ -167,240 +181,153 @@ go run cmd/validate-config.go
 - `POST /api/v1/payments/create-intent` - Create payment intent
 - `POST /api/v1/payments/confirm` - Confirm payment
 
-## 🎨 UI Flow
+### WebSocket
+- `WS /ws` - Real-time communication during interviews
 
-The application follows a 7-screen wireframe flow:
+## 🐳 Docker Development
 
-1. **Landing Page** - Role input and sample question preview
-2. **Role/Tag Setup** - Skill tags and filters
-3. **Warmup & Calibration** - Experience and preference questions
-4. **Session Purchase** - Choose session type and payment
-5. **Interview Dashboard** - Real-time interview with timer
-6. **End-of-Session Feedback** - Detailed scoring and recommendations
-7. **Dashboard/Retention** - Progress tracking and session history
-
-## 🛠️ Development
-
-### Frontend Development
+### Development Mode
 ```bash
-cd frontend
-npm install          # Install dependencies
-npm run dev          # Start development server (http://localhost:5173)
-npm run build        # Build for production
-npm run preview      # Preview production build
-npm run lint         # Run ESLint
+# Start development environment
+docker-compose up -d
+
+# View logs
+docker-compose logs -f backend
+docker-compose logs -f frontend
+
+# Stop services
+docker-compose down
 ```
 
-### Backend Development
+### Production Mode
 ```bash
-cd backend
-go mod download       # Download dependencies
-go run cmd/main.go   # Start development server (http://localhost:8080)
-go test ./...        # Run tests
-go mod tidy          # Clean up dependencies
+# Use production configuration
+docker-compose -f docker-compose.prod.yml up -d
 ```
 
-### Database Management
+## ☁️ Cloud Deployment
+
+### Supported Platforms
+- **AWS** (ECS, RDS, ElastiCache)
+- **Google Cloud** (Cloud Run, Cloud SQL, Memorystore)
+- **Azure** (Container Instances, Database, Cache)
+- **Kubernetes** (Any K8s cluster)
+
+### Deploy to Cloud
 ```bash
-# Start PostgreSQL with Docker
-docker run --name preparation-ai-postgres -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres:15
+# AWS
+./scripts/deploy.sh -e staging -p aws
 
-# Connect to database
-psql -h localhost -U postgres -d postgres
+# Google Cloud
+./scripts/deploy.sh -e staging -p gcp
 
-# Create database
-CREATE DATABASE preparation_ai;
+# Azure
+./scripts/deploy.sh -e staging -p azure
 
-# Run schema (if available)
-psql -h localhost -U postgres -d preparation_ai < database/schema.sql
-
-# Seed data (if available)
-psql -h localhost -U postgres -d preparation_ai < database/seed.sql
+# Kubernetes
+./scripts/deploy.sh -e staging -p k8s
 ```
+
+### GitHub Actions CI/CD
+The project includes automated CI/CD pipelines:
+- **Automatic testing** on pull requests
+- **Docker image building** and pushing
+- **Multi-environment deployment**
+- **Database migrations**
+- **Health checks**
+
+## 🗄️ Database Setup
+
+### Local Development
+```bash
+# PostgreSQL is automatically started with Docker Compose
+# Database schema and seed data are applied automatically
+```
+
+### Production Database
+- **AWS**: Use RDS PostgreSQL
+- **GCP**: Use Cloud SQL PostgreSQL
+- **Azure**: Use Azure Database for PostgreSQL
+
+### Database Schema
+- **Users** - User accounts and authentication
+- **User Profiles** - User preferences and skills
+- **Interview Sessions** - Session management
+- **Questions** - Generated interview questions
+- **Responses** - User responses and audio
+- **Feedback** - AI-generated feedback
+- **Subscriptions** - Payment and subscription management
+
+## 🔒 Security Features
+
+- **JWT Authentication** with secure token management
+- **Password Hashing** using bcrypt
+- **Rate Limiting** to prevent abuse
+- **CORS Configuration** for secure cross-origin requests
+- **Input Validation** and sanitization
+- **SQL Injection Protection** with parameterized queries
+- **XSS Protection** with proper content encoding
+- **HTTPS Enforcement** in production
+
+## 📊 Monitoring and Logging
+
+### Health Checks
+```bash
+# Application health
+curl http://localhost:8080/health
+
+# Database health
+curl http://localhost:8080/health/db
+
+# Redis health
+curl http://localhost:8080/health/redis
+```
+
+### Logging
+- **Structured JSON logging** in production
+- **Request/response logging** for debugging
+- **Error tracking** with stack traces
+- **Performance metrics** collection
 
 ## 🧪 Testing
 
 ### Frontend Tests
 ```bash
 cd frontend
-npm test             # Run unit tests
-npm run test:coverage # Run tests with coverage
+npm test
+npm run lint
+npm run build
 ```
 
 ### Backend Tests
 ```bash
 cd backend
-go test ./...        # Run all tests
-go test -v ./...     # Run tests with verbose output
-go test -race ./...  # Run tests with race detection
-go test -cover ./... # Run tests with coverage
+go test -v ./...
+go test -race ./...
+go test -cover ./...
 ```
 
 ### Integration Tests
 ```bash
 # Start test environment
 docker-compose -f docker-compose.test.yml up --abort-on-container-exit
-
-# Run API tests
-cd backend
-go test -tags=integration ./...
 ```
 
-## 🐛 Debugging
-
-### Frontend Debugging
-```bash
-cd frontend
-npm run dev          # Start with source maps
-# Open browser dev tools for debugging
-# Check console for errors and network tab for API calls
-```
-
-### Backend Debugging
-```bash
-cd backend
-# Run with debug flags
-go run -race cmd/main.go
-
-# Use Delve debugger
-dlv debug cmd/main.go
-# In debugger: break main.main, continue, step, etc.
-
-# Check logs
-tail -f logs/app.log  # If logging to file
-```
-
-### Database Debugging
-```bash
-# Connect to database
-psql -h localhost -U postgres -d preparation_ai
-
-# Check connections
-SELECT * FROM pg_stat_activity;
-
-# Check database size
-SELECT pg_size_pretty(pg_database_size('preparation_ai'));
-
-# Check table sizes
-SELECT schemaname,tablename,pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
-FROM pg_tables WHERE schemaname='public' ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
-```
-
-### Common Issues & Solutions
-
-#### Frontend Issues
-```bash
-# Clear node_modules and reinstall
-rm -rf node_modules package-lock.json
-npm install
-
-# Clear Vite cache
-rm -rf .vite
-npm run dev
-
-# Check for port conflicts
-lsof -i :5173
-kill -9 <PID>  # Kill process using port
-```
-
-#### Backend Issues
-```bash
-# Check Go version
-go version
-
-# Clean module cache
-go clean -modcache
-go mod download
-
-# Check for compilation errors
-go build ./...
-
-# Check database connection
-go run cmd/validate-config.go
-```
-
-#### Database Issues
-```bash
-# Check if PostgreSQL is running
-docker ps | grep postgres
-
-# Restart PostgreSQL
-docker restart preparation-ai-postgres
-
-# Check logs
-docker logs preparation-ai-postgres
-
-# Reset database
-docker stop preparation-ai-postgres
-docker rm preparation-ai-postgres
-docker run --name preparation-ai-postgres -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres:15
-```
-
-## 📦 Deployment
-
-### Production Build
-```bash
-# Build frontend
-cd frontend
-npm run build
-
-# Build backend
-cd backend
-go build -o main cmd/main.go
-```
-
-### Docker Production
-```bash
-# Build and deploy
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-## 🔧 Configuration
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DB_HOST` | Database host | `localhost` |
-| `DB_PORT` | Database port | `5432` |
-| `DB_USER` | Database user | `postgres` |
-| `DB_PASSWORD` | Database password | `password` |
-| `DB_NAME` | Database name | `preparation_ai` |
-| `JWT_SECRET` | JWT signing secret | `your-secret-key` |
-| `OPENAI_API_KEY` | OpenAI API key | Required |
-| `STRIPE_SECRET_KEY` | Stripe secret key | Required |
-| `PORT` | Server port | `8080` |
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Troubleshooting
+## 🚨 Troubleshooting
 
 ### Common Issues
 
 #### Frontend Won't Start
 ```bash
-# Clear cache and reinstall
 cd frontend
-rm -rf node_modules package-lock.json .vite
+rm -rf node_modules package-lock.json
 npm install
 npm run dev
 ```
 
 #### Backend Compilation Errors
 ```bash
-# Clean and rebuild
 cd backend
-go clean -modcache
 go mod download
 go mod tidy
 go run cmd/main.go
@@ -414,8 +341,8 @@ docker ps | grep postgres
 # Restart database
 docker restart preparation-ai-postgres
 
-# Check connection
-psql -h localhost -U postgres -d preparation_ai -c "SELECT 1;"
+# Check logs
+docker logs preparation-ai-postgres
 ```
 
 #### Port Conflicts
@@ -428,25 +355,71 @@ lsof -i :5173  # Frontend port
 kill -9 <PID>
 ```
 
-#### Environment Issues
-```bash
-# Validate configuration
-cd backend
-go run cmd/validate-config.go
+## 📈 Performance Optimization
 
-# Check environment variables
-cat .env | grep -v "^#"
-```
+### Frontend
+- **Code splitting** with React.lazy()
+- **Image optimization** with WebP format
+- **Bundle analysis** and optimization
+- **CDN integration** for static assets
+
+### Backend
+- **Connection pooling** for database
+- **Redis caching** for frequently accessed data
+- **Gzip compression** for API responses
+- **Horizontal scaling** with load balancing
+
+### Database
+- **Index optimization** for query performance
+- **Query optimization** and monitoring
+- **Read replicas** for read-heavy workloads
+- **Connection pooling** configuration
+
+## 🔄 Development Workflow
+
+### Git Workflow
+1. Create feature branch from `main`
+2. Make changes and test locally
+3. Push branch and create pull request
+4. Automated CI/CD pipeline runs tests
+5. Code review and merge to `main`
+6. Automatic deployment to staging/production
+
+### Code Quality
+- **ESLint** for frontend code quality
+- **Go vet** and **gofmt** for backend
+- **TypeScript** strict mode enabled
+- **Pre-commit hooks** for code formatting
+
+## 📞 Support
 
 ### Getting Help
+1. **Check logs** for error messages
+2. **Review documentation** in this README
+3. **Create GitHub issue** with error details
+4. **Check cloud provider status** pages
 
-- **Documentation**: Check this README and `/docs` folder
-- **Issues**: Create a GitHub issue with error logs
-- **Support**: Email support@preparationai.com
+### Emergency Procedures
+```bash
+# Rollback deployment
+docker-compose down
+docker-compose up -d --scale backend=1
 
-## 🆘 Support
+# Database recovery
+psql -h $DB_HOST -U $DB_USER $DB_NAME < backup_file.sql
+```
 
-For support, email support@preparationai.com or join our Slack channel.
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## 🗺️ Roadmap
 
@@ -458,3 +431,7 @@ For support, email support@preparationai.com or join our Slack channel.
 - [ ] Multi-language support
 - [ ] AI-powered resume analysis
 - [ ] Interview scheduling system
+
+---
+
+**Ready to ace your interviews! 🎯**
