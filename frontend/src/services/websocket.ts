@@ -29,11 +29,24 @@ class WebSocketService {
     this.off = this.off.bind(this);
   }
 
-  connect(clientId: string, userId: string, sessionId?: string): Promise<void> {
+  // connect opens an authenticated WebSocket. The backend authenticates the
+  // upgrade with the JWT (passed as a query param because browser WebSocket
+  // clients cannot set headers) and derives the user from the token, so no
+  // user_id is sent from the client.
+  connect(sessionId?: string, clientId?: string): Promise<void> {
     return new Promise((resolve, reject) => {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        reject(new Error('Cannot open WebSocket: not authenticated'));
+        return;
+      }
+
       try {
-        const wsUrl = `${config.ws.baseUrl}?client_id=${clientId}&user_id=${userId}${sessionId ? `&session_id=${sessionId}` : ''}`;
-        
+        const params = new URLSearchParams({ token });
+        if (clientId) params.set('client_id', clientId);
+        if (sessionId) params.set('session_id', sessionId);
+        const wsUrl = `${config.ws.baseUrl}?${params.toString()}`;
+
         this.ws = new WebSocket(wsUrl);
 
         this.ws.onopen = () => {
@@ -55,10 +68,10 @@ class WebSocketService {
         this.ws.onclose = (event) => {
           console.log('WebSocket disconnected:', event.code, event.reason);
           this.isConnected = false;
-          
-          // Attempt to reconnect if not a manual disconnect
+
+          // Attempt to reconnect if not a manual disconnect.
           if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.attemptReconnect(clientId, userId, sessionId);
+            this.attemptReconnect(sessionId, clientId);
           }
         };
 
@@ -73,12 +86,12 @@ class WebSocketService {
     });
   }
 
-  private attemptReconnect(clientId: string, userId: string, sessionId?: string) {
+  private attemptReconnect(sessionId?: string, clientId?: string) {
     this.reconnectAttempts++;
     console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-    
+
     setTimeout(() => {
-      this.connect(clientId, userId, sessionId).catch((error) => {
+      this.connect(sessionId, clientId).catch((error) => {
         console.error('Reconnection failed:', error);
       });
     }, this.reconnectDelay * this.reconnectAttempts);

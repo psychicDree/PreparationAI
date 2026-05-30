@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
+import wsService from '../services/websocket';
 import type { Question } from '../types';
 import { 
   PlayIcon, 
@@ -13,7 +14,7 @@ import {
 const InterviewDashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { questions, currentQuestionIndex, setQuestions, setCurrentQuestionIndex, addResponse } = useAppStore();
+  const { questions, currentQuestionIndex, setQuestions, setCurrentQuestionIndex, addResponse, isAuthenticated } = useAppStore();
   
   const [timeRemaining, setTimeRemaining] = useState(120); // 2 minutes per question
   const [isRecording, setIsRecording] = useState(false);
@@ -52,6 +53,25 @@ const InterviewDashboard = () => {
     // Load questions (in real app, this would be an API call)
     setQuestions(mockQuestions);
   }, [sessionId, setQuestions]);
+
+  // Open the realtime interview channel once a logged-in user starts a
+  // preparation session. Guests are not connected (the channel requires a JWT).
+  useEffect(() => {
+    if (!isAuthenticated || !sessionId) return;
+
+    let active = true;
+    wsService
+      .connect(sessionId)
+      .then(() => {
+        if (active) wsService.joinSession(sessionId);
+      })
+      .catch((error) => console.error('WebSocket connection failed:', error));
+
+    return () => {
+      active = false;
+      wsService.disconnect();
+    };
+  }, [isAuthenticated, sessionId]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -101,7 +121,12 @@ const InterviewDashboard = () => {
       };
 
       addResponse(mockResponse);
-      
+
+      // Notify the interview channel that a response was submitted.
+      if (sessionId) {
+        wsService.notifyResponseSubmitted(sessionId, mockResponse.id);
+      }
+
       // Move to next question or finish
       if (currentQuestionIndex < questions.length - 1) {
         setCurrentQuestionIndex(currentQuestionIndex + 1);
