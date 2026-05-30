@@ -32,11 +32,12 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port         string        `json:"port"`
-	Host         string        `json:"host"`
-	ReadTimeout  time.Duration `json:"read_timeout"`
-	WriteTimeout time.Duration `json:"write_timeout"`
-	IdleTimeout  time.Duration `json:"idle_timeout"`
+	Port           string        `json:"port"`
+	Host           string        `json:"host"`
+	ReadTimeout    time.Duration `json:"read_timeout"`
+	WriteTimeout   time.Duration `json:"write_timeout"`
+	IdleTimeout    time.Duration `json:"idle_timeout"`
+	AllowedOrigins string        `json:"allowed_origins"`
 }
 
 type DatabaseConfig struct {
@@ -90,11 +91,12 @@ func LoadConfig() (*Config, error) {
 
 	config := &Config{
 		Server: ServerConfig{
-			Port:         getEnv("PORT", "8080"),
-			Host:         getEnv("SERVER_HOST", "0.0.0.0"),
-			ReadTimeout:  getDurationEnv("SERVER_READ_TIMEOUT", 30*time.Second),
-			WriteTimeout: getDurationEnv("SERVER_WRITE_TIMEOUT", 30*time.Second),
-			IdleTimeout:  getDurationEnv("SERVER_IDLE_TIMEOUT", 120*time.Second),
+			Port:           getEnv("PORT", "8080"),
+			Host:           getEnv("SERVER_HOST", "0.0.0.0"),
+			ReadTimeout:    getDurationEnv("SERVER_READ_TIMEOUT", 30*time.Second),
+			WriteTimeout:   getDurationEnv("SERVER_WRITE_TIMEOUT", 30*time.Second),
+			IdleTimeout:    getDurationEnv("SERVER_IDLE_TIMEOUT", 120*time.Second),
+			AllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"),
 		},
 		Database: DatabaseConfig{
 			URL:      getEnv("DATABASE_URL", ""),

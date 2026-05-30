@@ -22,7 +22,7 @@ func GetSubscriptionPlans() ([]models.SubscriptionPlan, error) {
 		WHERE is_active = true 
 		ORDER BY price_monthly ASC
 	`
-	
+
 	log.Printf("Executing query: %s", query)
 	rows, err := database.DB.Query(query)
 	if err != nil {
@@ -36,7 +36,7 @@ func GetSubscriptionPlans() ([]models.SubscriptionPlan, error) {
 		var plan models.SubscriptionPlan
 		var featuresJSON []byte
 		var stripePriceIDMonthly, stripePriceIDYearly sql.NullString
-		
+
 		err := rows.Scan(
 			&plan.ID, &plan.Name, &plan.Description, &plan.PriceMonthly, &plan.PriceYearly,
 			&featuresJSON, &plan.MaxSessionsPerMonth, &plan.MaxSessionDuration, &plan.IsActive,
@@ -46,13 +46,13 @@ func GetSubscriptionPlans() ([]models.SubscriptionPlan, error) {
 			log.Printf("Row scan error: %v", err)
 			return nil, fmt.Errorf("failed to scan subscription plan: %w", err)
 		}
-		
+
 		// Parse JSONB features
 		if err := json.Unmarshal(featuresJSON, &plan.Features); err != nil {
 			log.Printf("JSON unmarshal error: %v, featuresJSON: %s", err, string(featuresJSON))
 			return nil, fmt.Errorf("failed to parse features JSON: %w", err)
 		}
-		
+
 		// Handle nullable Stripe price IDs
 		if stripePriceIDMonthly.Valid {
 			plan.StripePriceIDMonthly = stripePriceIDMonthly.String
@@ -60,7 +60,7 @@ func GetSubscriptionPlans() ([]models.SubscriptionPlan, error) {
 		if stripePriceIDYearly.Valid {
 			plan.StripePriceIDYearly = stripePriceIDYearly.String
 		}
-		
+
 		plans = append(plans, plan)
 	}
 
@@ -76,17 +76,17 @@ func GetSubscriptionPlanByID(planID string) (*models.SubscriptionPlan, error) {
 		FROM subscription_plans 
 		WHERE id = $1 AND is_active = true
 	`
-	
+
 	var plan models.SubscriptionPlan
 	var featuresJSON []byte
 	var stripePriceIDMonthly, stripePriceIDYearly sql.NullString
-	
+
 	err := database.DB.QueryRow(query, planID).Scan(
 		&plan.ID, &plan.Name, &plan.Description, &plan.PriceMonthly, &plan.PriceYearly,
 		&featuresJSON, &plan.MaxSessionsPerMonth, &plan.MaxSessionDuration, &plan.IsActive,
 		&stripePriceIDMonthly, &stripePriceIDYearly, &plan.CreatedAt, &plan.UpdatedAt,
 	)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("subscription plan not found")
@@ -126,12 +126,12 @@ func GetUserSubscription(userID string) (*models.SubscriptionWithPlan, error) {
 		ORDER BY us.created_at DESC
 		LIMIT 1
 	`
-	
+
 	var subscription models.SubscriptionWithPlan
 	var plan models.SubscriptionPlan
 	var featuresJSON []byte
 	var stripePriceIDMonthly, stripePriceIDYearly sql.NullString
-	
+
 	err := database.DB.QueryRow(query, userID).Scan(
 		&subscription.ID, &subscription.UserID, &subscription.PlanID, &subscription.Status,
 		&subscription.BillingCycle, &subscription.StripeSubscriptionID,
@@ -141,7 +141,7 @@ func GetUserSubscription(userID string) (*models.SubscriptionWithPlan, error) {
 		&featuresJSON, &plan.MaxSessionsPerMonth, &plan.MaxSessionDuration, &plan.IsActive,
 		&stripePriceIDMonthly, &stripePriceIDYearly, &plan.CreatedAt, &plan.UpdatedAt,
 	)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// Create a free subscription for the user if they don't have one
@@ -179,13 +179,13 @@ func createDefaultFreeSubscription(userID string) (*models.SubscriptionWithPlan,
 	subscriptionID := uuid.New().String()
 	now := time.Now()
 	periodEnd := now.AddDate(0, 1, 0) // 1 month from now
-	
+
 	query := `
 		INSERT INTO user_subscriptions (id, user_id, plan_id, status, billing_cycle, 
 		                               current_period_start, current_period_end)
 		VALUES ($1, $2, $3, 'active', 'monthly', $4, $5)
 	`
-	
+
 	_, err = database.DB.Exec(query, subscriptionID, userID, freePlan.ID, now, periodEnd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create free subscription: %w", err)
@@ -193,15 +193,15 @@ func createDefaultFreeSubscription(userID string) (*models.SubscriptionWithPlan,
 
 	subscription := &models.SubscriptionWithPlan{
 		UserSubscription: models.UserSubscription{
-			ID:                   subscriptionID,
-			UserID:               userID,
-			PlanID:               freePlan.ID,
-			Status:               "active",
-			BillingCycle:         "monthly",
-			CurrentPeriodStart:   now,
-			CurrentPeriodEnd:     periodEnd,
-			CreatedAt:            now,
-			UpdatedAt:            now,
+			ID:                 subscriptionID,
+			UserID:             userID,
+			PlanID:             freePlan.ID,
+			Status:             "active",
+			BillingCycle:       "monthly",
+			CurrentPeriodStart: now,
+			CurrentPeriodEnd:   periodEnd,
+			CreatedAt:          now,
+			UpdatedAt:          now,
 		},
 		Plan: *freePlan,
 	}
@@ -251,14 +251,14 @@ func CreateUserSubscription(userID, planID, billingCycle, stripeSubscriptionID s
 	}
 
 	subscriptionID := uuid.New().String()
-	
+
 	query := `
 		INSERT INTO user_subscriptions (id, user_id, plan_id, status, billing_cycle, 
 		                               stripe_subscription_id, current_period_start, current_period_end)
 		VALUES ($1, $2, $3, 'active', $4, $5, $6, $7)
 	`
-	
-	_, err = database.DB.Exec(query, subscriptionID, userID, planID, billingCycle, 
+
+	_, err = database.DB.Exec(query, subscriptionID, userID, planID, billingCycle,
 		stripeSubscriptionID, now, periodEnd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create subscription: %w", err)
@@ -333,13 +333,13 @@ func GetUserSubscriptionUsage(userID string) (*models.SubscriptionUsage, error) 
 	// Count sessions used this month
 	now := time.Now()
 	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-	
+
 	query := `
 		SELECT COUNT(*) 
 		FROM interview_sessions 
 		WHERE user_id = $1 AND created_at >= $2
 	`
-	
+
 	var sessionsUsed int
 	err = database.DB.QueryRow(query, userID, startOfMonth).Scan(&sessionsUsed)
 	if err != nil {
