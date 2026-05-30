@@ -13,20 +13,20 @@ import (
 type Config struct {
 	// Server configuration
 	Server ServerConfig `json:"server"`
-	
+
 	// Database configuration
 	Database DatabaseConfig `json:"database"`
-	
+
 	// Redis configuration
 	Redis RedisConfig `json:"redis"`
-	
+
 	// JWT configuration
 	JWT JWTConfig `json:"jwt"`
-	
+
 	// External services
 	OpenAI OpenAIConfig `json:"openai"`
 	Stripe StripeConfig `json:"stripe"`
-	
+
 	// Environment
 	Environment string `json:"environment"`
 }
@@ -40,6 +40,9 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
+	// URL, when set, is a full Postgres connection string (e.g. the one
+	// Supabase provides) and takes precedence over the discrete fields below.
+	URL      string `json:"url"`
 	Host     string `json:"host"`
 	Port     string `json:"port"`
 	User     string `json:"user"`
@@ -64,9 +67,9 @@ type JWTConfig struct {
 }
 
 type OpenAIConfig struct {
-	APIKey  string `json:"api_key"`
-	Model   string `json:"model"`
-	MaxTokens int  `json:"max_tokens"`
+	APIKey    string `json:"api_key"`
+	Model     string `json:"model"`
+	MaxTokens int    `json:"max_tokens"`
 }
 
 type StripeConfig struct {
@@ -94,6 +97,7 @@ func LoadConfig() (*Config, error) {
 			IdleTimeout:  getDurationEnv("SERVER_IDLE_TIMEOUT", 120*time.Second),
 		},
 		Database: DatabaseConfig{
+			URL:      getEnv("DATABASE_URL", ""),
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnv("DB_PORT", "5432"),
 			User:     getEnv("DB_USER", "postgres"),
@@ -160,8 +164,13 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// GetDatabaseDSN returns the database connection string
+// GetDatabaseDSN returns the database connection string. When DATABASE_URL is
+// set (e.g. the Supabase connection string) it is used directly; otherwise the
+// DSN is assembled from the discrete DB_* fields.
 func (c *Config) GetDatabaseDSN() string {
+	if c.Database.URL != "" {
+		return c.Database.URL
+	}
 	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		c.Database.Host,
 		c.Database.Port,
