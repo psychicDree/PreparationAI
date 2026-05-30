@@ -47,7 +47,7 @@ func GetSessions(c *fiber.Ctx) error {
 func GetSession(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
 	userID := c.Locals("userID").(string)
-	
+
 	// Get session from database
 	session, err := services.GetSessionByID(sessionID, userID)
 	if err != nil {
@@ -61,6 +61,14 @@ func GetSession(c *fiber.Ctx) error {
 
 func GenerateQuestions(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
+	userID := c.Locals("userID").(string)
+
+	// Ensure the session belongs to the requesting user.
+	if _, err := services.GetSessionByID(sessionID, userID); err != nil {
+		return c.Status(404).JSON(fiber.Map{
+			"error": "Session not found",
+		})
+	}
 
 	var req models.GenerateQuestionsRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -69,11 +77,17 @@ func GenerateQuestions(c *fiber.Ctx) error {
 		})
 	}
 
-	// TODO: Generate questions using AI service
 	questions, err := services.GenerateInterviewQuestions(sessionID, req.Experience, req.Preferences)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{
-			"error": "Failed to generate questions",
+			"error": "Failed to generate questions: " + err.Error(),
+		})
+	}
+
+	// Persist the generated questions so they can be retrieved during the session.
+	if err := services.CreateSessionQuestions(sessionID, questions); err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to save questions: " + err.Error(),
 		})
 	}
 
