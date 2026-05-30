@@ -2,15 +2,19 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/helmet"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 	"preparation-ai/internal/config"
+	"preparation-ai/internal/database"
 	"preparation-ai/internal/handlers"
 	"preparation-ai/internal/middleware"
-	"preparation-ai/internal/database"
 )
 
 func main() {
@@ -46,17 +50,17 @@ func main() {
 	})
 
 	// Middleware
+	app.Use(recover.New()) // recover from panics so one request can't crash the server
 	app.Use(logger.New())
-	
-	// CORS configuration
-	corsOrigins := "http://localhost:5173,http://localhost:3000"
-	if cfg.IsProduction() {
-		// In production, you'd set specific allowed origins
-		corsOrigins = "https://yourdomain.com"
-	}
-	
+	app.Use(helmet.New()) // security headers
+	app.Use(limiter.New(limiter.Config{
+		Max:        120,
+		Expiration: 1 * time.Minute,
+	}))
+
+	// CORS configuration (origins are driven by CORS_ALLOWED_ORIGINS)
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     corsOrigins,
+		AllowOrigins:     cfg.Server.AllowedOrigins,
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
 		AllowCredentials: true,
@@ -78,6 +82,9 @@ func main() {
 	// Public routes
 	api.Get("/subscription-plans", handlers.GetSubscriptionPlans) // Public route
 
+	// Stripe webhook (public: authenticated via signature, not JWT)
+	api.Post("/payments/webhook", handlers.StripeWebhook)
+
 	// Auth routes
 	auth := api.Group("/auth")
 	auth.Post("/register", handlers.Register)
@@ -86,7 +93,7 @@ func main() {
 
 	// Protected routes
 	protected := api.Group("/", middleware.Protected())
-	
+
 	// User routes
 	protected.Get("/profile", handlers.GetProfile)
 	protected.Put("/profile", handlers.UpdateProfile)

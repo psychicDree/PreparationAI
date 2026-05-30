@@ -13,15 +13,13 @@ import (
 func Protected() fiber.Handler {
 	cfg := config.AppConfig
 	if cfg == nil {
-		// Fallback to default secret if config not loaded
-		return jwtware.New(jwtware.Config{
-			SigningKey: []byte("your-secret-key"),
-			ErrorHandler: func(c *fiber.Ctx, err error) error {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-					"error": "Unauthorized",
-				})
-			},
-		})
+		// Fail closed: without configuration we cannot validate tokens, so
+		// reject every request rather than falling back to a default key.
+		return func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Server configuration not loaded",
+			})
+		}
 	}
 
 	return jwtware.New(jwtware.Config{
@@ -69,27 +67,16 @@ func Protected() fiber.Handler {
 	})
 }
 
-func ExtractUserID(c *fiber.Ctx) string {
-	user := c.Locals("user")
-	if user == nil {
-		return ""
-	}
-	
-	// Extract user ID from JWT claims
-	// This is a simplified version - in production, you'd parse the JWT properly
-	return "user-id-placeholder"
-}
-
 func GetBearerToken(c *fiber.Ctx) string {
 	authHeader := c.Get("Authorization")
 	if authHeader == "" {
 		return ""
 	}
-	
+
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || parts[0] != "Bearer" {
 		return ""
 	}
-	
+
 	return parts[1]
 }
