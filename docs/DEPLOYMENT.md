@@ -64,6 +64,21 @@ Already wired in the repo:
 4. SPA routing is handled by `frontend/public/_redirects`
    (`/* /index.html 200`), so deep links resolve to the React Router app.
 
+There are two deployment models — pick one:
+
+- **Git integration (simplest):** connect the repo in the Cloudflare dashboard
+  with the build settings above; Cloudflare builds and deploys on every push.
+  No workflow or secrets needed.
+- **CI Direct Upload:** use the included
+  `.github/workflows/deploy-cloudflare-pages.yml`, which builds and runs
+  `wrangler pages deploy`. It requires a Pages project named `preparationai`
+  plus these repo settings:
+  - **Secrets:** `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
+  - **Variables:** `VITE_API_URL`, `VITE_WS_URL`, `VITE_STRIPE_PUBLISHABLE_KEY`,
+    `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+  `frontend/wrangler.toml` sets the project name and `dist` output directory.
+
 ## 4. Edge security — Cloudflare
 
 - Put the API hostname behind Cloudflare (proxied DNS) and enable the **WAF**.
