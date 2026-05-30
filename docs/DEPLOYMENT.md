@@ -79,6 +79,26 @@ There are two deployment models — pick one:
 
   `frontend/wrangler.toml` sets the project name and `dist` output directory.
 
+## 3a. Custom domain — jobpreparation.online
+
+1. Add the domain to Cloudflare (it must be on a Cloudflare-managed zone).
+2. In the Pages project → **Custom domains**, add `jobpreparation.online`
+   (and `www` if desired). Cloudflare provisions the certificate.
+3. Host the **Go backend (API + WebSocket) separately** — Pages/Workers cannot
+   run the Fiber server. Use a container host (Fly.io / Railway / Render / a VM)
+   and point a subdomain at it, e.g. `api.jobpreparation.online`. Proxy it
+   through Cloudflare for WAF/TLS.
+4. Set the frontend env for production:
+   - `VITE_API_URL=https://api.jobpreparation.online/api/v1`
+   - `VITE_WS_URL=wss://api.jobpreparation.online/ws`
+   and the backend `CORS_ALLOWED_ORIGINS=https://jobpreparation.online`.
+
+The frontend opens the WebSocket (`wss://.../ws?token=<jwt>&session_id=<id>`)
+only after login, when a user starts a preparation session — see
+`frontend/src/pages/InterviewDashboard.tsx`. The backend authenticates the
+upgrade with the JWT, so `VITE_WS_URL` must be reachable from the browser and
+share the auth domain.
+
 ## 4. Edge security — Cloudflare
 
 - Put the API hostname behind Cloudflare (proxied DNS) and enable the **WAF**.
