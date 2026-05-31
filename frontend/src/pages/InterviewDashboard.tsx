@@ -89,6 +89,9 @@ const InterviewDashboard = () => {
     }, 1000);
 
     return () => clearInterval(timer);
+    // The timer is intentionally set up once on mount; depending on the
+    // submit handler would reset the countdown on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const formatTime = (seconds: number) => {
