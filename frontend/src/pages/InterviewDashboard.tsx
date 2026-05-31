@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import type { Question } from '../types';
-import { 
+import wsService from '../services/websocket';
+import apiService from '../services/api';
+import {
   PlayIcon, 
   StopIcon,
   ArrowRightIcon,
@@ -13,45 +14,67 @@ import {
 const InterviewDashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { questions, currentQuestionIndex, setQuestions, setCurrentQuestionIndex, addResponse } = useAppStore();
-  
+  const { questions, currentQuestionIndex, currentSession, setQuestions, setCurrentQuestionIndex, addResponse, setError, isAuthenticated } = useAppStore();
+
   const [timeRemaining, setTimeRemaining] = useState(120); // 2 minutes per question
   const [isRecording, setIsRecording] = useState(false);
   const [responseText, setResponseText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
 
-  // Mock questions for demo
-  const mockQuestions: Question[] = [
-    {
-      id: 'q1',
-      session_id: sessionId || '',
-      question_text: 'How would you secure a client–server multiplayer architecture in Unity using Netcode?',
-      question_type: 'technical' as const,
-      order_index: 1,
-      created_at: new Date().toISOString()
-    },
-    {
-      id: 'q2',
-      session_id: sessionId || '',
-      question_text: 'Explain the difference between client-side and server-side authority in multiplayer games.',
-      question_type: 'technical' as const,
-      order_index: 2,
-      created_at: new Date().toISOString()
-    },
-    {
-      id: 'q3',
-      session_id: sessionId || '',
-      question_text: 'How would you handle network synchronization for a real-time multiplayer game?',
-      question_type: 'system_design' as const,
-      order_index: 3,
-      created_at: new Date().toISOString()
-    }
-  ];
-
+  // Generate the interview questions for this session via the backend (which
+  // tailors them with the AI to the session's role/skills). Skips the call if
+  // this session's questions are already loaded (e.g. on remount).
   useEffect(() => {
-    // Load questions (in real app, this would be an API call)
-    setQuestions(mockQuestions);
-  }, [sessionId, setQuestions]);
+    if (!sessionId) return;
+
+    if (questions.length > 0 && questions[0]?.session_id === sessionId) {
+      setIsLoadingQuestions(false);
+      return;
+    }
+
+    let active = true;
+    setIsLoadingQuestions(true);
+    // TODO: thread the candidate's experience from the warmup step once it is
+    // stored globally; preferences are derived from the session's skill tags.
+    const preferences = currentSession?.tags ?? [];
+    apiService
+      .generateQuestions(sessionId, 0, preferences)
+      .then((generated) => {
+        if (active && generated?.length) setQuestions(generated);
+      })
+      .catch((error) => {
+        console.error('Failed to generate questions:', error);
+        if (active) setError('Failed to load interview questions');
+      })
+      .finally(() => {
+        if (active) setIsLoadingQuestions(false);
+      });
+
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  // Open the realtime interview channel once a logged-in user starts a
+  // preparation session. Guests are not connected (the channel requires a JWT).
+  useEffect(() => {
+    if (!isAuthenticated || !sessionId) return;
+
+    let active = true;
+    wsService
+      .connect(sessionId)
+      .then(() => {
+        if (active) wsService.joinSession(sessionId);
+      })
+      .catch((error) => console.error('WebSocket connection failed:', error));
+
+    return () => {
+      active = false;
+      wsService.disconnect();
+    };
+  }, [isAuthenticated, sessionId]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -66,6 +89,9 @@ const InterviewDashboard = () => {
     }, 1000);
 
     return () => clearInterval(timer);
+    // The timer is intentionally set up once on mount; depending on the
+    // submit handler would reset the countdown on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const formatTime = (seconds: number) => {
@@ -101,7 +127,12 @@ const InterviewDashboard = () => {
       };
 
       addResponse(mockResponse);
-      
+
+      // Notify the interview channel that a response was submitted.
+      if (sessionId) {
+        wsService.notifyResponseSubmitted(sessionId, mockResponse.id);
+      }
+
       // Move to next question or finish
       if (currentQuestionIndex < questions.length - 1) {
         setCurrentQuestionIndex(currentQuestionIndex + 1);
@@ -125,8 +156,14 @@ const InterviewDashboard = () => {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading interview questions...</p>
+          {isLoadingQuestions ? (
+            <>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+              <p className="text-gray-600">Generating your interview questions...</p>
+            </>
+          ) : (
+            <p className="text-gray-600">No questions available for this session.</p>
+          )}
         </div>
       </div>
     );

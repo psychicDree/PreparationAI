@@ -3,7 +3,7 @@ import { config } from '../config';
 export interface WSMessage {
   type: string;
   session_id?: string;
-  data?: any;
+  data?: unknown;
   error?: string;
 }
 
@@ -18,7 +18,7 @@ class WebSocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000; // 1 second
-  private messageHandlers: Map<string, (data: any) => void> = new Map();
+  private messageHandlers: Map<string, (data: unknown) => void> = new Map();
   private isConnected = false;
 
   constructor() {
@@ -29,11 +29,24 @@ class WebSocketService {
     this.off = this.off.bind(this);
   }
 
-  connect(clientId: string, userId: string, sessionId?: string): Promise<void> {
+  // connect opens an authenticated WebSocket. The backend authenticates the
+  // upgrade with the JWT (passed as a query param because browser WebSocket
+  // clients cannot set headers) and derives the user from the token, so no
+  // user_id is sent from the client.
+  connect(sessionId?: string, clientId?: string): Promise<void> {
     return new Promise((resolve, reject) => {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        reject(new Error('Cannot open WebSocket: not authenticated'));
+        return;
+      }
+
       try {
-        const wsUrl = `${config.ws.baseUrl}?client_id=${clientId}&user_id=${userId}${sessionId ? `&session_id=${sessionId}` : ''}`;
-        
+        const params = new URLSearchParams({ token });
+        if (clientId) params.set('client_id', clientId);
+        if (sessionId) params.set('session_id', sessionId);
+        const wsUrl = `${config.ws.baseUrl}?${params.toString()}`;
+
         this.ws = new WebSocket(wsUrl);
 
         this.ws.onopen = () => {
@@ -55,10 +68,10 @@ class WebSocketService {
         this.ws.onclose = (event) => {
           console.log('WebSocket disconnected:', event.code, event.reason);
           this.isConnected = false;
-          
-          // Attempt to reconnect if not a manual disconnect
+
+          // Attempt to reconnect if not a manual disconnect.
           if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.attemptReconnect(clientId, userId, sessionId);
+            this.attemptReconnect(sessionId, clientId);
           }
         };
 
@@ -73,12 +86,12 @@ class WebSocketService {
     });
   }
 
-  private attemptReconnect(clientId: string, userId: string, sessionId?: string) {
+  private attemptReconnect(sessionId?: string, clientId?: string) {
     this.reconnectAttempts++;
     console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-    
+
     setTimeout(() => {
-      this.connect(clientId, userId, sessionId).catch((error) => {
+      this.connect(sessionId, clientId).catch((error) => {
         console.error('Reconnection failed:', error);
       });
     }, this.reconnectDelay * this.reconnectAttempts);
@@ -141,14 +154,14 @@ class WebSocketService {
     this.triggerHandler('message', message);
   }
 
-  private triggerHandler(type: string, data: any) {
+  private triggerHandler(type: string, data: unknown) {
     const handler = this.messageHandlers.get(type);
     if (handler) {
       handler(data);
     }
   }
 
-  on(messageType: string, handler: (data: any) => void) {
+  on(messageType: string, handler: (data: unknown) => void) {
     this.messageHandlers.set(messageType, handler);
   }
 
@@ -180,7 +193,7 @@ class WebSocketService {
     });
   }
 
-  notifySessionCompleted(sessionId: string, sessionData: any) {
+  notifySessionCompleted(sessionId: string, sessionData: unknown) {
     this.send({
       type: 'session_completed',
       session_id: sessionId,

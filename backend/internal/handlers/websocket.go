@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"log"
+	"strings"
 	"sync"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
+	"preparation-ai/internal/services"
 )
 
 // WebSocketManager manages all active WebSocket connections
@@ -19,11 +21,11 @@ type WebSocketManager struct {
 
 // Client represents a WebSocket client
 type Client struct {
-	ID       string
-	UserID   string
+	ID        string
+	UserID    string
 	SessionID string
-	Conn     *websocket.Conn
-	Manager  *WebSocketManager
+	Conn      *websocket.Conn
+	Manager   *WebSocketManager
 }
 
 // Message types for WebSocket communication
@@ -92,27 +94,50 @@ func (m *WebSocketManager) BroadcastToSession(sessionID string, message WSMessag
 // Global WebSocket manager instance
 var wsManager = NewWebSocketManager()
 
-// WebSocketUpgrade upgrades HTTP connection to WebSocket
+// WebSocketUpgrade authenticates and upgrades an HTTP connection to a
+// WebSocket. The JWT is supplied either as a `token` query parameter (browser
+// WebSocket clients cannot set custom headers) or an Authorization header. The
+// authenticated user ID is stored in locals for the handler to read.
 func WebSocketUpgrade(c *fiber.Ctx) error {
-	if websocket.IsWebSocketUpgrade(c) {
-		return c.Next()
+	if !websocket.IsWebSocketUpgrade(c) {
+		return fiber.ErrUpgradeRequired
 	}
-	return fiber.ErrUpgradeRequired
+
+	token := c.Query("token")
+	if token == "" {
+		token = strings.TrimPrefix(c.Get("Authorization"), "Bearer ")
+	}
+	if token == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Missing token"})
+	}
+
+	claims, err := services.ValidateJWT(token)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	if blacklisted, err := services.IsTokenBlacklisted(token); err != nil || blacklisted {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Token has been revoked"})
+	}
+
+	c.Locals("userID", claims.UserID)
+	return c.Next()
 }
 
 // WebSocketHandler handles WebSocket connections
 func WebSocketHandler(c *websocket.Conn) {
 	// Generate a unique client ID
 	clientID := c.Query("client_id", "anonymous")
-	userID := c.Query("user_id", "")
+	// userID is set by WebSocketUpgrade from the validated JWT, not the client.
+	userID, _ := c.Locals("userID").(string)
 	sessionID := c.Query("session_id", "")
 
 	client := &Client{
-		ID:       clientID,
-		UserID:   userID,
+		ID:        clientID,
+		UserID:    userID,
 		SessionID: sessionID,
-		Conn:     c,
-		Manager:  wsManager,
+		Conn:      c,
+		Manager:   wsManager,
 	}
 
 	// Register client

@@ -50,6 +50,8 @@ const PricingPage = () => {
 
   useEffect(() => {
     fetchData();
+    // Fetch once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchData = async () => {
@@ -57,15 +59,15 @@ const PricingPage = () => {
       setIsLoading(true);
       
       // Fetch subscription plans
-      const plansResponse = await apiService.getSubscriptionPlans();
+      const plansResponse = await apiService.getSubscriptionPlans<SubscriptionPlan[]>();
       setPlans(plansResponse.data.data);
 
       // Fetch user subscription if authenticated
       if (isAuthenticated) {
         try {
-          const subscriptionResponse = await apiService.getUserSubscription();
+          const subscriptionResponse = await apiService.getUserSubscription<UserSubscription>();
           setUserSubscription(subscriptionResponse.data.data);
-        } catch (error) {
+        } catch {
           // User might not have a subscription yet
           // This should not happen as backend auto-assigns free plan
         }
@@ -95,11 +97,11 @@ const PricingPage = () => {
     setIsSubscribing(planId);
     
     try {
-      const response = await apiService.createSubscription({
+      const response = await apiService.createSubscription<UserSubscription>({
         plan_id: planId,
         billing_cycle: billingCycle
       });
-      
+
       setUserSubscription(response.data.data);
       
       // Show success message or redirect

@@ -7,9 +7,9 @@ import (
 type SessionType string
 
 const (
-	QuickDrill  SessionType = "quick_drill"
-	Standard    SessionType = "standard"
-	DeepDive    SessionType = "deep_dive"
+	QuickDrill SessionType = "quick_drill"
+	Standard   SessionType = "standard"
+	DeepDive   SessionType = "deep_dive"
 )
 
 type SessionStatus string
@@ -21,23 +21,23 @@ const (
 )
 
 type InterviewSession struct {
-	ID               string        `json:"id" db:"id"`
-	UserID           string        `json:"user_id" db:"user_id"`
-	SessionType      SessionType   `json:"session_type" db:"session_type"`
-	Status           SessionStatus `json:"status" db:"status"`
-	Tags             []string      `json:"tags" db:"tags"`
-	PaymentIntentID  string        `json:"payment_intent_id,omitempty" db:"payment_intent_id"`
-	CreatedAt        time.Time     `json:"created_at" db:"created_at"`
-	UpdatedAt        time.Time     `json:"updated_at" db:"updated_at"`
+	ID              string        `json:"id" db:"id"`
+	UserID          string        `json:"user_id" db:"user_id"`
+	SessionType     SessionType   `json:"session_type" db:"session_type"`
+	Status          SessionStatus `json:"status" db:"status"`
+	Tags            []string      `json:"tags" db:"tags"`
+	PaymentIntentID string        `json:"payment_intent_id,omitempty" db:"payment_intent_id"`
+	CreatedAt       time.Time     `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at" db:"updated_at"`
 }
 
 type Question struct {
-	ID          string    `json:"id" db:"id"`
-	SessionID   string    `json:"session_id" db:"session_id"`
-	QuestionText string   `json:"question_text" db:"question_text"`
-	QuestionType string   `json:"question_type" db:"question_type"`
-	OrderIndex  int       `json:"order_index" db:"order_index"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	ID           string    `json:"id" db:"id"`
+	SessionID    string    `json:"session_id" db:"session_id"`
+	QuestionText string    `json:"question_text" db:"question_text"`
+	QuestionType string    `json:"question_type" db:"question_type"`
+	OrderIndex   int       `json:"order_index" db:"order_index"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 }
 
 type UserResponse struct {

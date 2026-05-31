@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"preparation-ai/internal/database"
-	"preparation-ai/internal/models"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"preparation-ai/internal/database"
+	"preparation-ai/internal/models"
 )
 
 // CreateUser creates a new user in the database

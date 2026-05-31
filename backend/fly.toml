@@ -1,0 +1,47 @@
+# Fly.io config for the PreparationAI Go backend (REST API + WebSocket server).
+#
+# First-time setup (run from the backend/ directory):
+#   fly launch --no-deploy --copy-config --name preparationai-api
+#   fly secrets set \
+#     DATABASE_URL="postgresql://...supabase...:5432/postgres?sslmode=require" \
+#     JWT_SECRET="<strong-secret>" \
+#     OPENAI_API_KEY="sk-..." \
+#     STRIPE_SECRET_KEY="sk_live_..." \
+#     STRIPE_PUBLISHABLE_KEY="pk_live_..." \
+#     STRIPE_WEBHOOK_SECRET="whsec_..." \
+#     CORS_ALLOWED_ORIGINS="https://jobpreparation.online" \
+#     NODE_ENV="production"
+#   fly deploy
+#
+# Then point api.jobpreparation.online at the app:
+#   fly certs add api.jobpreparation.online
+# and add the CNAME/A records Fly prints (proxy through Cloudflare for WAF/TLS).
+
+app = "preparationai-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  SERVER_HOST = "0.0.0.0"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Keep one machine warm so long-lived WebSocket connections are not dropped.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/api/v1/health"
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

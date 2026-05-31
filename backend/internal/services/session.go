@@ -5,15 +5,51 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"preparation-ai/internal/database"
 	"preparation-ai/internal/models"
-	"github.com/google/uuid"
 )
+
+// QuestionAnswer pairs a question with the candidate's submitted answer.
+type QuestionAnswer struct {
+	QuestionText string
+	ResponseText string
+}
+
+// GetSessionQA returns the question/answer pairs for a session, ordered by the
+// question order. Questions without a submitted answer have an empty response.
+func GetSessionQA(sessionID string) ([]QuestionAnswer, error) {
+	query := `
+		SELECT sq.question_text, COALESCE(ur.response_text, '')
+		FROM session_questions sq
+		LEFT JOIN user_responses ur ON ur.question_id = sq.id
+		WHERE sq.session_id = $1
+		ORDER BY sq.order_index
+	`
+
+	rows, err := database.DB.Query(query, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get session Q&A: %w", err)
+	}
+	defer rows.Close()
+
+	var pairs []QuestionAnswer
+	for rows.Next() {
+		var qa QuestionAnswer
+		if err := rows.Scan(&qa.QuestionText, &qa.ResponseText); err != nil {
+			return nil, fmt.Errorf("failed to scan Q&A: %w", err)
+		}
+		pairs = append(pairs, qa)
+	}
+
+	return pairs, rows.Err()
+}
 
 // CreateInterviewSession creates a new interview session
 func CreateInterviewSession(userID string, req models.CreateSessionRequest) (*models.InterviewSession, error) {
 	sessionID := uuid.New().String()
-	
+
 	query := `
 		INSERT INTO interview_sessions (id, user_id, session_type, status, tags, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -67,7 +103,7 @@ func GetUserSessions(userID string) ([]models.InterviewSession, error) {
 	for rows.Next() {
 		var session models.InterviewSession
 		var paymentIntentID sql.NullString
-		
+
 		err := rows.Scan(
 			&session.ID,
 			&session.UserID,
@@ -106,7 +142,7 @@ func GetSessionByID(sessionID, userID string) (*models.InterviewSession, error) 
 
 	var session models.InterviewSession
 	var paymentIntentID sql.NullString
-	
+
 	err := database.DB.QueryRow(query, sessionID, userID).Scan(
 		&session.ID,
 		&session.UserID,
@@ -130,6 +166,28 @@ func GetSessionByID(sessionID, userID string) (*models.InterviewSession, error) 
 	}
 
 	return &session, nil
+}
+
+// MarkSessionPaid records the PaymentIntent on a session once payment has been
+// verified with Stripe.
+func MarkSessionPaid(sessionID, paymentIntentID string) error {
+	query := `
+		UPDATE interview_sessions
+		SET payment_intent_id = $1, updated_at = $2
+		WHERE id = $3
+	`
+
+	result, err := database.DB.Exec(query, paymentIntentID, time.Now(), sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to mark session paid: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err == nil && rows == 0 {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	return nil
 }
 
 // CreateSessionQuestions creates questions for a session
@@ -167,7 +225,7 @@ func CreateSessionQuestions(sessionID string, questions []models.Question) error
 // CreateUserResponse creates a user response for a question
 func CreateUserResponse(sessionID, questionID, responseText, audioURL string) (*models.UserResponse, error) {
 	responseID := uuid.New().String()
-	
+
 	query := `
 		INSERT INTO user_responses (id, question_id, response_text, audio_url, submitted_at)
 		VALUES ($1, $2, $3, $4, $5)
@@ -221,9 +279,9 @@ func GetSessionFeedback(sessionID, userID string) (*models.SessionFeedback, erro
 		&feedback.TechnicalScore,
 		&feedback.CommunicationScore,
 		&feedback.ProblemSolvingScore,
-		&feedback.Strengths,
-		&feedback.Weaknesses,
-		&feedback.Recommendations,
+		pq.Array(&feedback.Strengths),
+		pq.Array(&feedback.Weaknesses),
+		pq.Array(&feedback.Recommendations),
 		&feedback.CreatedAt,
 	)
 
@@ -240,7 +298,7 @@ func GetSessionFeedback(sessionID, userID string) (*models.SessionFeedback, erro
 // CreateSessionFeedback creates feedback for a session
 func CreateSessionFeedback(sessionID string, feedback *models.SessionFeedback) error {
 	feedbackID := uuid.New().String()
-	
+
 	query := `
 		INSERT INTO session_feedback (id, session_id, technical_score, communication_score, 
 		                            problem_solving_score, strengths, weaknesses, recommendations, created_at)
@@ -254,9 +312,9 @@ func CreateSessionFeedback(sessionID string, feedback *models.SessionFeedback) e
 		feedback.TechnicalScore,
 		feedback.CommunicationScore,
 		feedback.ProblemSolvingScore,
-		feedback.Strengths,
-		feedback.Weaknesses,
-		feedback.Recommendations,
+		pq.Array(feedback.Strengths),
+		pq.Array(feedback.Weaknesses),
+		pq.Array(feedback.Recommendations),
 		time.Now(),
 	)
 
