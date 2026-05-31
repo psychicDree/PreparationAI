@@ -116,11 +116,52 @@ share the auth domain.
 For the audio-response feature, store recordings in **Cloudflare R2** or
 **Supabase Storage** and persist only the object URL in `user_responses.audio_url`.
 
-## Required secrets checklist
+## Required secrets & variables checklist
 
-| Where | Variable | Source |
-|-------|----------|--------|
-| Backend | `DATABASE_URL` | Supabase → Database → Connection string |
-| Backend | `OPENAI_API_KEY`, `STRIPE_SECRET_KEY`, `JWT_SECRET` | respective dashboards |
-| Pages   | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase → API |
-| Pages   | `VITE_API_URL`, `VITE_WS_URL`, `VITE_STRIPE_PUBLISHABLE_KEY` | your deploy |
+Three destinations. **Only the `VITE_*` values go on Cloudflare** — they are
+public, build-time values baked into the JS bundle. The real secrets go on the
+backend host (Fly.io), never on Cloudflare/the frontend.
+
+### A. Cloudflare Pages → Settings → Variables and Secrets (frontend, public)
+
+| Variable | Value |
+|----------|-------|
+| `VITE_API_URL` | `https://api.jobpreparation.online/api/v1` |
+| `VITE_WS_URL` | `wss://api.jobpreparation.online/ws` |
+| `VITE_SUPABASE_URL` | `https://dpfqcrucpbhmqmdjeatg.supabase.co` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | the `sb_publishable_...` key (Supabase → API) |
+| `VITE_STRIPE_PUBLISHABLE_KEY` | `pk_live_...` (Stripe → API keys) |
+| `VITE_NODE_ENV` | `production` |
+| `VITE_DEBUG` | `false` |
+
+Optional (defaults are fine): `VITE_ENABLE_AUDIO_RECORDING`,
+`VITE_ENABLE_PAYMENTS`, `VITE_ENABLE_ANALYTICS`, `VITE_API_TIMEOUT`,
+`VITE_THEME`, `VITE_LANGUAGE`, `VITE_TIMEZONE`. `VITE_*` values are compile-time
+— changing them requires a Pages rebuild.
+
+### B. Backend host (Fly.io) → `fly secrets set` (real secrets — never on Cloudflare)
+
+| Secret | Source / notes |
+|--------|----------------|
+| `DATABASE_URL` | Supabase → Settings → Database (the DB **password**, not the anon key); keep `sslmode=require` |
+| `JWT_SECRET` | a long random string (e.g. `openssl rand -base64 48`) |
+| `OPENAI_API_KEY` | OpenAI dashboard — required or AI question/feedback generation fails |
+| `STRIPE_SECRET_KEY` | Stripe — required to boot |
+| `STRIPE_PUBLISHABLE_KEY` | Stripe — required to boot |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook pointed at `/api/v1/payments/webhook` |
+| `CORS_ALLOWED_ORIGINS` | `https://jobpreparation.online` (must match the Pages domain) |
+| `NODE_ENV` | `production` |
+| `OPENAI_MODEL` | optional, defaults to `gpt-4o` |
+
+`PORT` / `SERVER_HOST` are set in `backend/fly.toml`. The discrete `DB_*` vars
+are unnecessary when `DATABASE_URL` is set.
+
+### C. GitHub repo → Settings (only if using the CI deploy workflow)
+
+For `.github/workflows/deploy-cloudflare-pages.yml` to deploy automatically:
+
+- **Secrets:** `CLOUDFLARE_API_TOKEN` (scoped to *Pages: Edit*), `CLOUDFLARE_ACCOUNT_ID`
+- **Variables:** the same five `VITE_*` from section A (injected at build time)
+
+If you connect the repo directly in the Cloudflare dashboard (Git integration)
+instead, you only need section A and can skip section C.
