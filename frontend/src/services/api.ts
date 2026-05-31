@@ -164,29 +164,30 @@ class ApiService {
     return localStorage.getItem('auth_token');
   }
 
-  // Subscription methods
-  async getSubscriptionPlans() {
-    return this.get('/subscription-plans');
+  // Subscription methods. These return the backend's `{ data: T }` envelope;
+  // callers supply T for the payload shape.
+  async getSubscriptionPlans<T = unknown>() {
+    return this.get<{ data: T }>('/subscription-plans');
   }
 
-  async getUserSubscription() {
-    return this.get('/subscription');
+  async getUserSubscription<T = unknown>() {
+    return this.get<{ data: T }>('/subscription');
   }
 
-  async getUserSubscriptionUsage() {
-    return this.get('/subscription/usage');
+  async getUserSubscriptionUsage<T = unknown>() {
+    return this.get<{ data: T }>('/subscription/usage');
   }
 
-  async createSubscription(data: { plan_id: string; billing_cycle: 'monthly' | 'yearly' }) {
-    return this.post('/subscription', data);
+  async createSubscription<T = unknown>(data: { plan_id: string; billing_cycle: 'monthly' | 'yearly' }) {
+    return this.post<{ data: T }>('/subscription', data);
   }
 
-  async updateSubscription(data: Record<string, unknown>) {
-    return this.put('/subscription', data);
+  async updateSubscription<T = unknown>(data: Record<string, unknown>) {
+    return this.put<{ data: T }>('/subscription', data);
   }
 
-  async checkSessionEligibility() {
-    return this.get('/subscription/eligibility');
+  async checkSessionEligibility<T = unknown>() {
+    return this.get<{ data: T }>('/subscription/eligibility');
   }
 }
 

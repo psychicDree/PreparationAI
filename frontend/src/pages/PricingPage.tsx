@@ -57,13 +57,13 @@ const PricingPage = () => {
       setIsLoading(true);
       
       // Fetch subscription plans
-      const plansResponse = await apiService.getSubscriptionPlans();
+      const plansResponse = await apiService.getSubscriptionPlans<SubscriptionPlan[]>();
       setPlans(plansResponse.data.data);
 
       // Fetch user subscription if authenticated
       if (isAuthenticated) {
         try {
-          const subscriptionResponse = await apiService.getUserSubscription();
+          const subscriptionResponse = await apiService.getUserSubscription<UserSubscription>();
           setUserSubscription(subscriptionResponse.data.data);
         } catch {
           // User might not have a subscription yet
@@ -95,11 +95,11 @@ const PricingPage = () => {
     setIsSubscribing(planId);
     
     try {
-      const response = await apiService.createSubscription({
+      const response = await apiService.createSubscription<UserSubscription>({
         plan_id: planId,
         billing_cycle: billingCycle
       });
-      
+
       setUserSubscription(response.data.data);
       
       // Show success message or redirect
