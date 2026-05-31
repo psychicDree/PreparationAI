@@ -122,7 +122,7 @@ func LoadConfig() (*Config, error) {
 		},
 		OpenAI: OpenAIConfig{
 			APIKey:    getEnv("OPENAI_API_KEY", ""),
-			Model:     getEnv("OPENAI_MODEL", "gpt-4"),
+			Model:     getEnv("OPENAI_MODEL", "gpt-4o"),
 			MaxTokens: getIntEnv("OPENAI_MAX_TOKENS", 1000),
 		},
 		Stripe: StripeConfig{

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -152,6 +153,64 @@ func EvaluateResponse(questionText string, responseText string) (*models.Session
 		Weaknesses:          parsed.Weaknesses,
 		Recommendations:     parsed.Recommendations,
 	}, nil
+}
+
+// GenerateSessionFeedback evaluates every answered question in a session with
+// the AI, aggregates the per-answer scores, persists the result, and returns
+// it. It is used to produce feedback lazily when first requested.
+func GenerateSessionFeedback(sessionID string) (*models.SessionFeedback, error) {
+	pairs, err := GetSessionQA(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		count                              int
+		techSum, commSum, probSum          float64
+		strengths, weaknesses, suggestions []string
+	)
+
+	for _, qa := range pairs {
+		if strings.TrimSpace(qa.ResponseText) == "" {
+			continue
+		}
+		fb, err := EvaluateResponse(qa.QuestionText, qa.ResponseText)
+		if err != nil {
+			return nil, err
+		}
+		count++
+		techSum += fb.TechnicalScore
+		commSum += fb.CommunicationScore
+		probSum += fb.ProblemSolvingScore
+		strengths = append(strengths, fb.Strengths...)
+		weaknesses = append(weaknesses, fb.Weaknesses...)
+		suggestions = append(suggestions, fb.Recommendations...)
+	}
+
+	if count == 0 {
+		return nil, fmt.Errorf("no answered questions to evaluate")
+	}
+
+	feedback := &models.SessionFeedback{
+		SessionID:           sessionID,
+		TechnicalScore:      round1(techSum / float64(count)),
+		CommunicationScore:  round1(commSum / float64(count)),
+		ProblemSolvingScore: round1(probSum / float64(count)),
+		Strengths:           strengths,
+		Weaknesses:          weaknesses,
+		Recommendations:     suggestions,
+	}
+
+	if err := CreateSessionFeedback(sessionID, feedback); err != nil {
+		return nil, err
+	}
+
+	return feedback, nil
+}
+
+// round1 rounds to one decimal place to fit the score columns (DECIMAL(3,1)).
+func round1(v float64) float64 {
+	return math.Round(v*10) / 10
 }
 
 // getSessionTags returns the skill/role tags for a session so questions can be

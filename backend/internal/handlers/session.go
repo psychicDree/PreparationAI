@@ -128,11 +128,23 @@ func GetFeedback(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
 	userID := c.Locals("userID").(string)
 
-	// Get feedback from database
-	feedback, err := services.GetSessionFeedback(sessionID, userID)
-	if err != nil {
+	// Verify the session belongs to the requesting user.
+	if _, err := services.GetSessionByID(sessionID, userID); err != nil {
 		return c.Status(404).JSON(fiber.Map{
-			"error": "Feedback not found",
+			"error": "Session not found",
+		})
+	}
+
+	// Return stored feedback if it exists.
+	if feedback, err := services.GetSessionFeedback(sessionID, userID); err == nil {
+		return c.JSON(feedback)
+	}
+
+	// Otherwise generate it from the AI evaluation of the submitted responses.
+	feedback, err := services.GenerateSessionFeedback(sessionID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to generate feedback: " + err.Error(),
 		})
 	}
 

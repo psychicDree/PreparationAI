@@ -6,9 +6,45 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"preparation-ai/internal/database"
 	"preparation-ai/internal/models"
 )
+
+// QuestionAnswer pairs a question with the candidate's submitted answer.
+type QuestionAnswer struct {
+	QuestionText string
+	ResponseText string
+}
+
+// GetSessionQA returns the question/answer pairs for a session, ordered by the
+// question order. Questions without a submitted answer have an empty response.
+func GetSessionQA(sessionID string) ([]QuestionAnswer, error) {
+	query := `
+		SELECT sq.question_text, COALESCE(ur.response_text, '')
+		FROM session_questions sq
+		LEFT JOIN user_responses ur ON ur.question_id = sq.id
+		WHERE sq.session_id = $1
+		ORDER BY sq.order_index
+	`
+
+	rows, err := database.DB.Query(query, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get session Q&A: %w", err)
+	}
+	defer rows.Close()
+
+	var pairs []QuestionAnswer
+	for rows.Next() {
+		var qa QuestionAnswer
+		if err := rows.Scan(&qa.QuestionText, &qa.ResponseText); err != nil {
+			return nil, fmt.Errorf("failed to scan Q&A: %w", err)
+		}
+		pairs = append(pairs, qa)
+	}
+
+	return pairs, rows.Err()
+}
 
 // CreateInterviewSession creates a new interview session
 func CreateInterviewSession(userID string, req models.CreateSessionRequest) (*models.InterviewSession, error) {
@@ -243,9 +279,9 @@ func GetSessionFeedback(sessionID, userID string) (*models.SessionFeedback, erro
 		&feedback.TechnicalScore,
 		&feedback.CommunicationScore,
 		&feedback.ProblemSolvingScore,
-		&feedback.Strengths,
-		&feedback.Weaknesses,
-		&feedback.Recommendations,
+		pq.Array(&feedback.Strengths),
+		pq.Array(&feedback.Weaknesses),
+		pq.Array(&feedback.Recommendations),
 		&feedback.CreatedAt,
 	)
 
@@ -276,9 +312,9 @@ func CreateSessionFeedback(sessionID string, feedback *models.SessionFeedback) e
 		feedback.TechnicalScore,
 		feedback.CommunicationScore,
 		feedback.ProblemSolvingScore,
-		feedback.Strengths,
-		feedback.Weaknesses,
-		feedback.Recommendations,
+		pq.Array(feedback.Strengths),
+		pq.Array(feedback.Weaknesses),
+		pq.Array(feedback.Recommendations),
 		time.Now(),
 	)
 
