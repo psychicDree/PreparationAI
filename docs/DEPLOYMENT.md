@@ -87,7 +87,10 @@ There are two deployment models — pick one:
 3. Host the **Go backend (API + WebSocket) separately** — Pages/Workers cannot
    run the Fiber server. Use a container host (Fly.io / Railway / Render / a VM)
    and point a subdomain at it, e.g. `api.jobpreparation.online`. Proxy it
-   through Cloudflare for WAF/TLS.
+   through Cloudflare for WAF/TLS. A ready-to-use **Fly.io config lives at
+   `backend/fly.toml`** (builds from the existing Dockerfile, health-checks
+   `/api/v1/health`, keeps one machine warm for WebSockets); deploy with
+   `fly deploy` from `backend/` after setting secrets.
 4. Set the frontend env for production:
    - `VITE_API_URL=https://api.jobpreparation.online/api/v1`
    - `VITE_WS_URL=wss://api.jobpreparation.online/ws`

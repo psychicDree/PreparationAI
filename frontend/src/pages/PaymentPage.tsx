@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
+import type { SessionType } from '../types';
 import { CheckIcon, ClockIcon, StarIcon } from '@heroicons/react/24/outline';
 
 const PaymentPage = () => {
@@ -63,7 +64,7 @@ const PaymentPage = () => {
       if (sessionType) {
         const updatedSession = {
           ...currentSession,
-          session_type: sessionType.id as any,
+          session_type: sessionType.id as SessionType,
           updated_at: new Date().toISOString(),
         };
         setCurrentSession(updatedSession);

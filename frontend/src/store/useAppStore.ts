@@ -120,16 +120,16 @@ export const useAppStore = create<AppState>()(
       // Add version to handle migrations
       version: 1,
       // Add migration to clear data if needed
-      migrate: (persistedState: any, version: number) => {
+      migrate: (persistedState: unknown, version: number) => {
         if (version === 0) {
           // Clear old persisted data
           return {
             user: null,
             isAuthenticated: false,
             sessions: [],
-          };
+          } as unknown as AppState;
         }
-        return persistedState;
+        return persistedState as AppState;
       },
     }
   )

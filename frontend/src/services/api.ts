@@ -56,19 +56,19 @@ class ApiService {
   }
 
   // Generic HTTP methods
-  async get<T = any>(url: string): Promise<AxiosResponse<T>> {
+  async get<T = unknown>(url: string): Promise<AxiosResponse<T>> {
     return this.api.get<T>(url);
   }
 
-  async post<T = any>(url: string, data?: any): Promise<AxiosResponse<T>> {
+  async post<T = unknown>(url: string, data?: unknown): Promise<AxiosResponse<T>> {
     return this.api.post<T>(url, data);
   }
 
-  async put<T = any>(url: string, data?: any): Promise<AxiosResponse<T>> {
+  async put<T = unknown>(url: string, data?: unknown): Promise<AxiosResponse<T>> {
     return this.api.put<T>(url, data);
   }
 
-  async delete<T = any>(url: string): Promise<AxiosResponse<T>> {
+  async delete<T = unknown>(url: string): Promise<AxiosResponse<T>> {
     return this.api.delete<T>(url);
   }
 
@@ -181,7 +181,7 @@ class ApiService {
     return this.post('/subscription', data);
   }
 
-  async updateSubscription(data: any) {
+  async updateSubscription(data: Record<string, unknown>) {
     return this.put('/subscription', data);
   }
 
