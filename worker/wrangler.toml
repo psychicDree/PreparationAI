@@ -1,0 +1,13 @@
+name = "preparationai-gateway"
+main = "src/index.ts"
+compatibility_date = "2025-05-30"
+
+# Routes the API subdomain through this Worker. Requires jobpreparation.online
+# to be a zone on Cloudflare with a DNS record for api.jobpreparation.online.
+routes = [
+  { pattern = "api.jobpreparation.online/*", zone_name = "jobpreparation.online" }
+]
+
+[vars]
+ORIGIN_URL = "https://preparationai-api.fly.dev"
+ALLOWED_ORIGIN = "https://jobpreparation.online"
