@@ -3,7 +3,7 @@ import { config } from '../config';
 export interface WSMessage {
   type: string;
   session_id?: string;
-  data?: any;
+  data?: unknown;
   error?: string;
 }
 
@@ -18,7 +18,7 @@ class WebSocketService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000; // 1 second
-  private messageHandlers: Map<string, (data: any) => void> = new Map();
+  private messageHandlers: Map<string, (data: unknown) => void> = new Map();
   private isConnected = false;
 
   constructor() {
@@ -154,14 +154,14 @@ class WebSocketService {
     this.triggerHandler('message', message);
   }
 
-  private triggerHandler(type: string, data: any) {
+  private triggerHandler(type: string, data: unknown) {
     const handler = this.messageHandlers.get(type);
     if (handler) {
       handler(data);
     }
   }
 
-  on(messageType: string, handler: (data: any) => void) {
+  on(messageType: string, handler: (data: unknown) => void) {
     this.messageHandlers.set(messageType, handler);
   }
 
@@ -193,7 +193,7 @@ class WebSocketService {
     });
   }
 
-  notifySessionCompleted(sessionId: string, sessionData: any) {
+  notifySessionCompleted(sessionId: string, sessionData: unknown) {
     this.send({
       type: 'session_completed',
       session_id: sessionId,

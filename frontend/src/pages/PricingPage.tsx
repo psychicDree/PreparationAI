@@ -65,7 +65,7 @@ const PricingPage = () => {
         try {
           const subscriptionResponse = await apiService.getUserSubscription();
           setUserSubscription(subscriptionResponse.data.data);
-        } catch (error) {
+        } catch {
           // User might not have a subscription yet
           // This should not happen as backend auto-assigns free plan
         }
