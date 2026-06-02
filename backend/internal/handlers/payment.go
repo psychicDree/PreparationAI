@@ -12,6 +12,7 @@ func CreatePaymentIntent(c *fiber.Ctx) error {
 
 	var req struct {
 		SessionType string `json:"session_type"`
+		SessionID   string `json:"session_id"`
 		Amount      int64  `json:"amount"`
 	}
 
@@ -21,8 +22,7 @@ func CreatePaymentIntent(c *fiber.Ctx) error {
 		})
 	}
 
-	// TODO: Create payment intent using Stripe
-	clientSecret, err := services.CreatePaymentIntent(userID, req.Amount, req.SessionType)
+	clientSecret, err := services.CreatePaymentIntent(userID, req.Amount, req.SessionType, req.SessionID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{
 			"error": "Failed to create payment intent",
@@ -45,8 +45,12 @@ func ConfirmPayment(c *fiber.Ctx) error {
 			"error": "Invalid request body",
 		})
 	}
+	if req.PaymentIntentID == "" || req.SessionID == "" {
+		return c.Status(400).JSON(fiber.Map{
+			"error": "payment_intent_id and session_id are required",
+		})
+	}
 
-	// TODO: Confirm payment and activate session
 	err := services.ConfirmPayment(req.PaymentIntentID, req.SessionID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{
