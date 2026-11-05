@@ -83,8 +83,21 @@ type StripeConfig struct {
 
 var AppConfig *Config
 
-// LoadConfig loads configuration from environment variables
+// LoadConfig loads configuration from environment variables and validates it for the API server
 func LoadConfig() (*Config, error) {
+	config := Load()
+
+	// Validate required configuration
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("configuration validation failed: %w", err)
+	}
+
+	return config, nil
+}
+
+// Load reads configuration from environment variables without validation, for tools such as the
+// dataset exporter that only need part of it (e.g. the database settings)
+func Load() *Config {
 	// Load .env file if it exists
 	if err := godotenv.Load(); err != nil {
 		// .env file is optional, so we don't return an error
@@ -136,13 +149,8 @@ func LoadConfig() (*Config, error) {
 		Environment: getEnv("NODE_ENV", "development"),
 	}
 
-	// Validate required configuration
-	if err := config.Validate(); err != nil {
-		return nil, fmt.Errorf("configuration validation failed: %w", err)
-	}
-
 	AppConfig = config
-	return config, nil
+	return config
 }
 
 // Validate checks if all required configuration is present

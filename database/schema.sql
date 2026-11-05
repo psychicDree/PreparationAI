@@ -32,6 +32,9 @@ CREATE TABLE interview_sessions (
     session_type VARCHAR(50) NOT NULL CHECK (session_type IN ('quick_drill', 'standard', 'deep_dive')),
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled')),
     tags TEXT[] DEFAULT '{}',
+    -- Warm-up answers used to generate the questions (experience level 0-5, prep styles)
+    experience INTEGER,
+    preferences TEXT[] DEFAULT '{}',
     payment_intent_id VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -66,6 +69,19 @@ CREATE TABLE session_feedback (
     strengths TEXT[] DEFAULT '{}',
     weaknesses TEXT[] DEFAULT '{}',
     recommendations TEXT[] DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Curated question bank used to ground AI question generation (retrieved by tag and full-text match)
+CREATE TABLE question_bank (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    question_text TEXT NOT NULL UNIQUE,
+    question_type VARCHAR(50) NOT NULL CHECK (question_type IN ('technical', 'behavioral', 'system_design')),
+    -- Lowercase role/skill tags; 'general' marks questions that suit any role
+    tags TEXT[] NOT NULL DEFAULT '{}',
+    -- Experience levels (0-5, as on the warm-up screen) the question suits
+    min_experience INTEGER NOT NULL DEFAULT 0 CHECK (min_experience BETWEEN 0 AND 5),
+    max_experience INTEGER NOT NULL DEFAULT 5 CHECK (max_experience BETWEEN 0 AND 5),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -115,6 +131,7 @@ CREATE INDEX idx_interview_sessions_status ON interview_sessions(status);
 CREATE INDEX idx_session_questions_session_id ON session_questions(session_id);
 CREATE INDEX idx_user_responses_question_id ON user_responses(question_id);
 CREATE INDEX idx_session_feedback_session_id ON session_feedback(session_id);
+CREATE INDEX idx_question_bank_tags ON question_bank USING GIN(tags);
 CREATE INDEX idx_subscription_plans_is_active ON subscription_plans(is_active);
 CREATE INDEX idx_user_subscriptions_user_id ON user_subscriptions(user_id);
 CREATE INDEX idx_user_subscriptions_status ON user_subscriptions(status);

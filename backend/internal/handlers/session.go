@@ -91,26 +91,30 @@ func GenerateQuestions(c *fiber.Ctx) error {
 		return c.JSON(existing)
 	}
 
-	if req.SessionType != "" || len(req.Tags) > 0 {
-		if req.SessionType != "" {
-			if !isValidSessionType(req.SessionType) {
-				return c.Status(400).JSON(fiber.Map{
-					"error": "Invalid session type",
-				})
-			}
-			session.SessionType = req.SessionType
-		}
-		if len(req.Tags) > 0 {
-			session.Tags = req.Tags
-		}
-		if err := services.UpdateSessionSetup(sessionID, session.SessionType, session.Tags); err != nil {
-			return c.Status(500).JSON(fiber.Map{
-				"error": "Failed to update session: " + err.Error(),
+	if req.SessionType != "" {
+		if !isValidSessionType(req.SessionType) {
+			return c.Status(400).JSON(fiber.Map{
+				"error": "Invalid session type",
 			})
 		}
+		session.SessionType = req.SessionType
+	}
+	if len(req.Tags) > 0 {
+		session.Tags = req.Tags
+	}
+	if req.Experience < 0 || req.Experience > 5 {
+		return c.Status(400).JSON(fiber.Map{
+			"error": "experience must be between 0 and 5",
+		})
 	}
 
-	questions, err := services.GenerateInterviewQuestions(services.QuestionParams{
+	if err := services.UpdateSessionSetup(sessionID, session.SessionType, session.Tags, req.Experience, req.Preferences); err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to update session: " + err.Error(),
+		})
+	}
+
+	questions, err := services.GenerateSessionQuestions(services.QuestionParams{
 		SessionID:   sessionID,
 		SessionType: session.SessionType,
 		Tags:        session.Tags,

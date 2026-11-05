@@ -65,6 +65,8 @@ jobs:
             psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f "$MIGRATION_DIR/schema.sql"
             echo "Seeding data..."
             psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f "$MIGRATION_DIR/seed.sql"
+            echo "Seeding question bank..."
+            psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f "$MIGRATION_DIR/question_bank_seed.sql"
             ;;
           "down")
             echo "Rolling back migrations..."

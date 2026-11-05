@@ -325,15 +325,18 @@ func CreateSessionFeedback(sessionID string, feedback *models.SessionFeedback) e
 	return nil
 }
 
-// UpdateSessionSetup stores the role tags and session type chosen during setup
-func UpdateSessionSetup(sessionID string, sessionType models.SessionType, tags []string) error {
+// UpdateSessionSetup stores the setup and warm-up answers chosen before questions are generated
+func UpdateSessionSetup(sessionID string, sessionType models.SessionType, tags []string, experience int, preferences []string) error {
 	query := `
 		UPDATE interview_sessions
-		SET session_type = $2, tags = $3
+		SET session_type = $2, tags = $3, experience = $4, preferences = $5
 		WHERE id = $1
 	`
 
-	if _, err := database.DB.Exec(query, sessionID, sessionType, pq.Array(tags)); err != nil {
+	if preferences == nil {
+		preferences = []string{}
+	}
+	if _, err := database.DB.Exec(query, sessionID, sessionType, pq.Array(tags), experience, pq.Array(preferences)); err != nil {
 		return fmt.Errorf("failed to update session: %w", err)
 	}
 

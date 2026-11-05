@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	"preparation-ai/internal/config"
 	"preparation-ai/internal/models"
@@ -18,11 +19,23 @@ import (
 // aiHTTPClient is the HTTP client used for OpenAI calls; tests may replace it.
 var aiHTTPClient = &http.Client{}
 
+// jsonModeUnsupported records models whose endpoint rejected response_format (e.g. the original
+// gpt-4, or Ollama models imported from safetensors), so later requests skip JSON mode up front.
+var jsonModeUnsupported sync.Map
+
+// maxParseAttempts bounds retries when a model (typically a small local one) returns malformed JSON.
+const maxParseAttempts = 2
+
 type OpenAIRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
-	Temperature float64   `json:"temperature"`
+	Model          string          `json:"model"`
+	Messages       []Message       `json:"messages"`
+	MaxTokens      int             `json:"max_tokens,omitempty"`
+	Temperature    float64         `json:"temperature"`
+	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+}
+
+type ResponseFormat struct {
+	Type string `json:"type"`
 }
 
 type Message struct {
@@ -48,6 +61,8 @@ type QuestionParams struct {
 	Tags        []string
 	Experience  int
 	Preferences []string
+	// References are curated bank questions used to ground generation (see SearchQuestionBank).
+	References []BankQuestion
 }
 
 // QuestionAnswer pairs a question with the candidate's response for evaluation.
@@ -99,12 +114,10 @@ func GenerateInterviewQuestions(params QuestionParams) ([]models.Question, error
 
 	count := QuestionCount(params.SessionType)
 	if cfg.OpenAI.Mock {
+		if len(params.References) > 0 {
+			return questionsFromBank(params.SessionID, params.References, count), nil
+		}
 		return mockQuestions(params.SessionID, count), nil
-	}
-
-	content, err := callOpenAIAPI(interviewerSystemPrompt, buildQuestionPrompt(params, count))
-	if err != nil {
-		return nil, err
 	}
 
 	var parsed struct {
@@ -113,8 +126,8 @@ func GenerateInterviewQuestions(params QuestionParams) ([]models.Question, error
 			QuestionType string `json:"question_type"`
 		} `json:"questions"`
 	}
-	if err := decodeJSONContent(content, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse generated questions: %w", err)
+	if err := completeJSON(QuestionMessages(params), &parsed); err != nil {
+		return nil, fmt.Errorf("failed to generate questions: %w", err)
 	}
 
 	questions := make([]models.Question, 0, len(parsed.Questions))
@@ -153,11 +166,6 @@ func EvaluateSession(sessionType models.SessionType, tags []string, answers []Qu
 		return mockFeedback(), nil
 	}
 
-	content, err := callOpenAIAPI(interviewerSystemPrompt, buildEvaluationPrompt(sessionType, tags, answers))
-	if err != nil {
-		return nil, err
-	}
-
 	var parsed struct {
 		TechnicalScore      float64  `json:"technical_score"`
 		CommunicationScore  float64  `json:"communication_score"`
@@ -166,8 +174,8 @@ func EvaluateSession(sessionType models.SessionType, tags []string, answers []Qu
 		Weaknesses          []string `json:"weaknesses"`
 		Recommendations     []string `json:"recommendations"`
 	}
-	if err := decodeJSONContent(content, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse evaluation: %w", err)
+	if err := completeJSON(EvaluationMessages(sessionType, tags, answers), &parsed); err != nil {
+		return nil, fmt.Errorf("failed to evaluate session: %w", err)
 	}
 
 	return &models.SessionFeedback{
@@ -178,6 +186,23 @@ func EvaluateSession(sessionType models.SessionType, tags []string, answers []Qu
 		Weaknesses:          nonEmpty(parsed.Weaknesses),
 		Recommendations:     nonEmpty(parsed.Recommendations),
 	}, nil
+}
+
+// QuestionMessages builds the chat messages for question generation. The dataset exporter uses it
+// too, so fine-tuning examples match the prompts sent at inference time.
+func QuestionMessages(params QuestionParams) []Message {
+	return []Message{
+		{Role: "system", Content: interviewerSystemPrompt},
+		{Role: "user", Content: buildQuestionPrompt(params, QuestionCount(params.SessionType))},
+	}
+}
+
+// EvaluationMessages builds the chat messages for evaluating a completed interview.
+func EvaluationMessages(sessionType models.SessionType, tags []string, answers []QuestionAnswer) []Message {
+	return []Message{
+		{Role: "system", Content: interviewerSystemPrompt},
+		{Role: "user", Content: buildEvaluationPrompt(sessionType, tags, answers)},
+	}
 }
 
 func buildQuestionPrompt(params QuestionParams, count int) string {
@@ -207,6 +232,14 @@ func buildQuestionPrompt(params QuestionParams, count int) string {
 		b.WriteString("Use a balanced mix of technical, system design and behavioral questions.\n")
 	}
 
+	if len(params.References) > 0 {
+		b.WriteString("Vetted questions from our question bank for this role, for topic coverage and difficulty:\n")
+		for _, r := range params.References {
+			fmt.Fprintf(&b, "- (%s) %s\n", r.QuestionType, r.QuestionText)
+		}
+		b.WriteString("You may reuse or adapt a few of them, but most of your questions must be new.\n")
+	}
+
 	b.WriteString("Each question must be answerable in writing within about two minutes, specific to the role, and not repeat another question.\n")
 	b.WriteString(`Respond with JSON of the form {"questions":[{"question_text":"...","question_type":"technical|behavioral|system_design"}]}.`)
 
@@ -232,35 +265,85 @@ func buildEvaluationPrompt(sessionType models.SessionType, tags []string, answer
 
 	b.WriteString("Score technical depth, communication and problem solving from 0 to 10 (one decimal place). ")
 	b.WriteString("Unanswered questions lower the scores. ")
-	b.WriteString("List 2-4 specific strengths, 2-4 specific weaknesses and 3-5 concrete recommendations, referring to the answers given.\n")
-	b.WriteString(`Respond with JSON of the form {"technical_score":0,"communication_score":0,"problem_solving_score":0,"strengths":["..."],"weaknesses":["..."],"recommendations":["..."]}.`)
+	b.WriteString("List 2-4 specific strengths, 2-4 specific weaknesses and 3-5 concrete recommendations, referring to the answers given. ")
+	b.WriteString("Write all feedback directly to the candidate in the second person (\"you\"); recommendations are what the candidate should study or practise next, not advice for the interviewer.\n")
+	// Placeholders rather than example numbers: small models tend to copy example values verbatim.
+	b.WriteString(`Respond with JSON of the form {"technical_score":<0-10>,"communication_score":<0-10>,"problem_solving_score":<0-10>,"strengths":["..."],"weaknesses":["..."],"recommendations":["..."]}.`)
 
 	return b.String()
 }
 
-func callOpenAIAPI(systemPrompt, userPrompt string) (string, error) {
+// completeJSON calls the model and decodes its JSON reply into v, retrying when the reply is malformed
+// or the server fails (local engines abort runaway generations with a 5xx, e.g. Ollama's repeat limit).
+func completeJSON(messages []Message, v interface{}) error {
+	var lastErr error
+	for attempt := 1; attempt <= maxParseAttempts; attempt++ {
+		content, status, err := callOpenAIAPI(messages)
+		if err != nil {
+			if status < http.StatusInternalServerError {
+				return err
+			}
+			lastErr = err
+			continue
+		}
+		if lastErr = decodeJSONContent(content, v); lastErr == nil {
+			return nil
+		}
+		lastErr = fmt.Errorf("unparseable model reply: %w", lastErr)
+	}
+	return fmt.Errorf("failed after %d attempts: %w", maxParseAttempts, lastErr)
+}
+
+func callOpenAIAPI(messages []Message) (string, int, error) {
+	model := ""
+	if config.AppConfig != nil {
+		model = config.AppConfig.OpenAI.Model
+	}
+
+	if _, unsupported := jsonModeUnsupported.Load(model); !unsupported {
+		content, status, err := sendChatCompletion(messages, true)
+		if !isJSONModeRejection(status, err) {
+			return content, status, err
+		}
+		jsonModeUnsupported.Store(model, true)
+	}
+	return sendChatCompletion(messages, false)
+}
+
+// isJSONModeRejection reports whether a failed request was refused because of response_format:
+// OpenAI answers 400 naming the parameter, Ollama 501 "structured output is unavailable".
+func isJSONModeRejection(status int, err error) bool {
+	if err == nil || (status != http.StatusBadRequest && status != http.StatusNotImplemented) {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "response_format") || strings.Contains(msg, "structured output")
+}
+
+// sendChatCompletion makes one Chat Completions request and returns the reply text and HTTP status.
+func sendChatCompletion(messages []Message, jsonMode bool) (string, int, error) {
 	cfg := config.AppConfig
 	if cfg == nil {
-		return "", fmt.Errorf("configuration not loaded")
+		return "", 0, fmt.Errorf("configuration not loaded")
 	}
 
 	if cfg.OpenAI.APIKey == "" && cfg.OpenAI.RequiresAPIKey() {
-		return "", fmt.Errorf("OpenAI API key not found")
+		return "", 0, fmt.Errorf("OpenAI API key not found")
 	}
 
 	request := OpenAIRequest{
-		Model: cfg.OpenAI.Model,
-		Messages: []Message{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
+		Model:       cfg.OpenAI.Model,
+		Messages:    messages,
 		MaxTokens:   cfg.OpenAI.MaxTokens,
 		Temperature: 0.7,
+	}
+	if jsonMode {
+		request.ResponseFormat = &ResponseFormat{Type: "json_object"}
 	}
 
 	body, err := json.Marshal(request)
 	if err != nil {
-		return "", fmt.Errorf("failed to encode OpenAI request: %w", err)
+		return "", 0, fmt.Errorf("failed to encode OpenAI request: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.OpenAI.Timeout)
@@ -269,7 +352,7 @@ func callOpenAIAPI(systemPrompt, userPrompt string) (string, error) {
 	url := strings.TrimRight(cfg.OpenAI.BaseURL, "/") + "/chat/completions"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("failed to create OpenAI request: %w", err)
+		return "", 0, fmt.Errorf("failed to create OpenAI request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if cfg.OpenAI.APIKey != "" {
@@ -278,32 +361,32 @@ func callOpenAIAPI(systemPrompt, userPrompt string) (string, error) {
 
 	resp, err := aiHTTPClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("OpenAI request failed: %w", err)
+		return "", 0, fmt.Errorf("OpenAI request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read OpenAI response: %w", err)
+		return "", resp.StatusCode, fmt.Errorf("failed to read OpenAI response: %w", err)
 	}
 
 	var parsed OpenAIResponse
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return "", fmt.Errorf("OpenAI returned status %d with an unreadable body", resp.StatusCode)
+		return "", resp.StatusCode, fmt.Errorf("OpenAI returned status %d with an unreadable body", resp.StatusCode)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		if parsed.Error != nil && parsed.Error.Message != "" {
-			return "", fmt.Errorf("OpenAI returned status %d: %s", resp.StatusCode, parsed.Error.Message)
+			return "", resp.StatusCode, fmt.Errorf("OpenAI returned status %d: %s", resp.StatusCode, parsed.Error.Message)
 		}
-		return "", fmt.Errorf("OpenAI returned status %d", resp.StatusCode)
+		return "", resp.StatusCode, fmt.Errorf("OpenAI returned status %d", resp.StatusCode)
 	}
 
 	if len(parsed.Choices) == 0 || strings.TrimSpace(parsed.Choices[0].Message.Content) == "" {
-		return "", fmt.Errorf("OpenAI returned an empty response")
+		return "", resp.StatusCode, fmt.Errorf("OpenAI returned an empty response")
 	}
 
-	return parsed.Choices[0].Message.Content, nil
+	return parsed.Choices[0].Message.Content, resp.StatusCode, nil
 }
 
 // decodeJSONContent parses the JSON object in a model reply, tolerating code fences or surrounding prose.
