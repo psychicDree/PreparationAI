@@ -6,6 +6,7 @@ import type {
   Question,
   SessionFeedback,
   UserResponse,
+  InterviewSetup,
 } from '../types';
 
 interface AppState {
@@ -16,6 +17,7 @@ interface AppState {
   // Session state
   currentSession: InterviewSession | null;
   sessions: InterviewSession[];
+  interviewSetup: InterviewSetup | null;
 
   // Interview state
   questions: Question[];
@@ -31,6 +33,7 @@ interface AppState {
   setUser: (user: User | null) => void;
   setAuthenticated: (isAuthenticated: boolean) => void;
   setCurrentSession: (session: InterviewSession | null) => void;
+  setInterviewSetup: (setup: InterviewSetup | null) => void;
   setSessions: (sessions: InterviewSession[]) => void;
   setQuestions: (questions: Question[]) => void;
   setCurrentQuestionIndex: (index: number) => void;
@@ -51,6 +54,7 @@ export const useAppStore = create<AppState>()(
       isAuthenticated: false,
       currentSession: null,
       sessions: [],
+      interviewSetup: null,
       questions: [],
       currentQuestionIndex: 0,
       responses: [],
@@ -62,6 +66,7 @@ export const useAppStore = create<AppState>()(
       setUser: (user) => set({ user }),
       setAuthenticated: (isAuthenticated) => set({ isAuthenticated }),
       setCurrentSession: (currentSession) => set({ currentSession }),
+      setInterviewSetup: (interviewSetup) => set({ interviewSetup }),
       setSessions: (sessions) => set({ sessions }),
       setQuestions: (questions) => set({ questions, currentQuestionIndex: 0 }),
       setCurrentQuestionIndex: (currentQuestionIndex) => set({ currentQuestionIndex }),
@@ -74,6 +79,7 @@ export const useAppStore = create<AppState>()(
 
       resetInterview: () => set({
         currentSession: null,
+        interviewSetup: null,
         questions: [],
         currentQuestionIndex: 0,
         responses: [],
@@ -90,6 +96,7 @@ export const useAppStore = create<AppState>()(
           isAuthenticated: false,
           currentSession: null,
           sessions: [],
+          interviewSetup: null,
           questions: [],
           currentQuestionIndex: 0,
           responses: [],
@@ -116,6 +123,7 @@ export const useAppStore = create<AppState>()(
         sessions: state.isAuthenticated ? state.sessions : [],
         // Always persist current session to maintain onboarding flow
         currentSession: state.currentSession,
+        interviewSetup: state.interviewSetup,
       }),
       // Add version to handle migrations
       version: 1,

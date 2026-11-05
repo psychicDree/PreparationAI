@@ -18,6 +18,13 @@ import PricingPage from './pages/PricingPage';
 import Header from './components/Header';
 import Footer from './components/Footer';
 
+// Defined outside App so re-renders of App don't remount the routed pages
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  // Allow both authenticated users and guest sessions to proceed
+  // Guest sessions are handled by the individual pages
+  return <>{children}</>;
+};
+
 function App() {
   const { setUser, setAuthenticated, setLoading, setError, resetApp } = useAppStore();
 
@@ -45,12 +52,6 @@ function App() {
 
     initializeAuth();
   }, [setUser, setAuthenticated, setLoading, setError, resetApp]);
-
-  const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-    // Allow both authenticated users and guest sessions to proceed
-    // Guest sessions are handled by the individual pages
-    return <>{children}</>;
-  };
 
   return (
     <Router>

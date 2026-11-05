@@ -62,14 +62,15 @@ const RoleSetupPage = () => {
 
   const handleNext = () => {
     if (selectedTags.length > 0) {
-      // Update the current session with selected tags
+      // Update the current session with selected tags, keeping the saved session's id
       const updatedSession = {
         id: 'temp-session',
         user_id: 'temp-user',
         session_type: 'standard' as const,
         status: 'active' as const,
-        tags: selectedTags,
         created_at: new Date().toISOString(),
+        ...currentSession,
+        tags: selectedTags,
         updated_at: new Date().toISOString(),
       };
       setCurrentSession(updatedSession);

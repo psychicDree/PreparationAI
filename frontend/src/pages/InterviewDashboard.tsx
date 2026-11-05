@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import type { Question } from '../types';
+import apiService, { getApiErrorMessage } from '../services/api';
+import type { Question, UserResponse } from '../types';
 import { 
   PlayIcon, 
   StopIcon,
@@ -13,15 +14,30 @@ import {
 const InterviewDashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { questions, currentQuestionIndex, setQuestions, setCurrentQuestionIndex, addResponse } = useAppStore();
-  
+  const {
+    questions,
+    currentQuestionIndex,
+    setQuestions,
+    setCurrentQuestionIndex,
+    addResponse,
+    setFeedback,
+    isAuthenticated,
+    currentSession,
+    interviewSetup,
+  } = useAppStore();
+  // Guests (and the local placeholder session) get demo questions; AI generation needs a saved session
+  const isDemo = !isAuthenticated || !sessionId || sessionId === 'temp-session';
+
   const [timeRemaining, setTimeRemaining] = useState(120); // 2 minutes per question
   const [isRecording, setIsRecording] = useState(false);
   const [responseText, setResponseText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
-  // Mock questions for demo
-  const mockQuestions: Question[] = [
+  // Demo questions for guest sessions
+  const demoQuestions: Question[] = [
     {
       id: 'q1',
       session_id: sessionId || '',
@@ -49,9 +65,38 @@ const InterviewDashboard = () => {
   ];
 
   useEffect(() => {
-    // Load questions (in real app, this would be an API call)
-    setQuestions(mockQuestions);
-  }, [sessionId, setQuestions]);
+    setFeedback(null);
+
+    if (isDemo) {
+      setQuestions(demoQuestions);
+      return;
+    }
+
+    let cancelled = false;
+    setQuestions([]);
+    setLoadError(null);
+
+    const setup = currentSession?.id === sessionId ? currentSession : null;
+    apiService
+      .generateQuestions(sessionId, {
+        experience: interviewSetup?.experience ?? 0,
+        preferences: interviewSetup?.preferences ?? [],
+        session_type: setup?.session_type,
+        tags: setup?.tags,
+      })
+      .then((generated) => {
+        if (!cancelled) setQuestions(generated);
+      })
+      .catch((error) => {
+        if (!cancelled) setLoadError(getApiErrorMessage(error, 'Failed to generate interview questions.'));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // Setup values are read once per load; changing them mid-interview must not regenerate questions
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, isDemo, loadAttempt, setQuestions, setFeedback]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -85,22 +130,27 @@ const InterviewDashboard = () => {
   };
 
   const handleSubmitResponse = async () => {
-    if (!responseText.trim()) return;
+    const question = questions[currentQuestionIndex];
+    if (!responseText.trim() || !question) return;
 
     setIsSubmitting(true);
+    setSubmitError(null);
     
     try {
-      // Mock response submission
-      const mockResponse = {
-        id: `response-${Date.now()}`,
-        session_id: sessionId || '',
-        question_id: questions[currentQuestionIndex]?.id || '',
-        response_text: responseText,
-        audio_url: isRecording ? 'mock-audio-url' : undefined,
-        submitted_at: new Date().toISOString()
-      };
+      let response: UserResponse;
+      if (isDemo) {
+        response = {
+          id: `response-${Date.now()}`,
+          session_id: sessionId || '',
+          question_id: question.id,
+          response_text: responseText,
+          submitted_at: new Date().toISOString()
+        };
+      } else {
+        response = await apiService.submitResponse(sessionId, question.id, responseText);
+      }
 
-      addResponse(mockResponse);
+      addResponse(response);
       
       // Move to next question or finish
       if (currentQuestionIndex < questions.length - 1) {
@@ -113,6 +163,7 @@ const InterviewDashboard = () => {
       }
     } catch (error) {
       console.error('Failed to submit response:', error);
+      setSubmitError(getApiErrorMessage(error, 'Failed to submit your response. Please try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -121,12 +172,32 @@ const InterviewDashboard = () => {
   const currentQuestion = questions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
 
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-center min-h-96">
+        <div className="text-center max-w-md">
+          <ExclamationTriangleIcon className="w-12 h-12 text-orange-500 mx-auto mb-4" />
+          <p className="text-gray-900 font-medium mb-2">We couldn't prepare your interview.</p>
+          <p className="text-gray-600 mb-6">{loadError}</p>
+          <button
+            onClick={() => setLoadAttempt((attempt) => attempt + 1)}
+            className="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentQuestion) {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading interview questions...</p>
+          <p className="text-gray-600">
+            {isDemo ? 'Loading interview questions...' : 'Generating your personalized interview questions...'}
+          </p>
         </div>
       </div>
     );
@@ -134,6 +205,16 @@ const InterviewDashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto">
+      {isDemo && (
+        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+          These are demo questions.{' '}
+          <Link to="/onboarding" className="font-medium underline">
+            Sign in
+          </Link>{' '}
+          to get AI-generated questions and feedback tailored to your role.
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
@@ -262,7 +343,13 @@ const InterviewDashboard = () => {
             {/* Submit Button */}
             <div className="flex justify-between items-center">
               <div className="text-sm text-gray-500">
-                {timeRemaining <= 30 && (
+                {submitError && (
+                  <div className="flex items-center text-red-600">
+                    <ExclamationTriangleIcon className="w-4 h-4 mr-1" />
+                    <span>{submitError}</span>
+                  </div>
+                )}
+                {!submitError && timeRemaining <= 30 && (
                   <div className="flex items-center text-orange-600">
                     <ExclamationTriangleIcon className="w-4 h-4 mr-1" />
                     <span>Time running low!</span>

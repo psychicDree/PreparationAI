@@ -47,7 +47,8 @@ services:
       - REDIS_URL=redis:6379
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - PORT=8080
-      - OPENAI_API_KEY=your-openai-api-key-here
+      # OPENAI_API_KEY comes from .env; set OPENAI_MOCK=true there to run without a key
+      - OPENAI_MOCK=${OPENAI_MOCK:-false}
       - STRIPE_SECRET_KEY=sk_test_fake_key
       - STRIPE_PUBLISHABLE_KEY=pk_test_fake_key
       - STRIPE_WEBHOOK_SECRET=whsec_fake_key

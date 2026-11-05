@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { isAxiosError } from 'axios';
 import type { AxiosInstance, AxiosResponse } from 'axios';
 import { config } from '../config';
 import type {
@@ -9,6 +9,7 @@ import type {
   UserProfile,
   InterviewSession,
   CreateSessionRequest,
+  GenerateQuestionsRequest,
   Question,
   SessionFeedback,
   PaymentIntent,
@@ -16,8 +17,28 @@ import type {
   UserResponse,
 } from '../types';
 
+// Extracts the backend's `error` message from a failed request
+export const getApiErrorMessage = (error: unknown, fallback: string): string => {
+  if (isAxiosError(error)) {
+    const data = error.response?.data as { error?: string } | undefined;
+    if (data?.error) return data.error;
+    if (error.code === 'ECONNABORTED') return 'The request timed out. Please try again.';
+  }
+  return fallback;
+};
+
 class ApiService {
   private api: AxiosInstance;
+  // Shares one in-flight request per AI endpoint so repeated calls don't trigger duplicate generations
+  private pendingAiRequests = new Map<string, Promise<unknown>>();
+
+  private dedupeAiRequest<T>(key: string, request: () => Promise<T>): Promise<T> {
+    const pending = this.pendingAiRequests.get(key);
+    if (pending) return pending as Promise<T>;
+    const promise = request().finally(() => this.pendingAiRequests.delete(key));
+    this.pendingAiRequests.set(key, promise);
+    return promise;
+  }
 
   constructor() {
     this.api = axios.create({
@@ -121,16 +142,19 @@ class ApiService {
     return response.data;
   }
 
-  async generateQuestions(sessionId: string, experience: number, preferences: string[]): Promise<Question[]> {
-    const response: AxiosResponse<Question[]> = await this.api.post(`/sessions/${sessionId}/questions`, {
-      experience,
-      preferences,
+  // Generates AI questions on first call; later calls return the session's stored questions
+  async generateQuestions(sessionId: string, data: GenerateQuestionsRequest): Promise<Question[]> {
+    return this.dedupeAiRequest(`questions:${sessionId}`, async () => {
+      const response: AxiosResponse<Question[]> = await this.api.post(`/sessions/${sessionId}/questions`, data, {
+        timeout: config.api.aiTimeout,
+      });
+      return response.data;
     });
-    return response.data;
   }
 
-  async submitResponse(sessionId: string, responseText: string, audioUrl?: string): Promise<UserResponse> {
+  async submitResponse(sessionId: string, questionId: string, responseText: string, audioUrl?: string): Promise<UserResponse> {
     const response: AxiosResponse<UserResponse> = await this.api.post(`/sessions/${sessionId}/responses`, {
+      question_id: questionId,
       response_text: responseText,
       audio_url: audioUrl,
     });
@@ -140,6 +164,16 @@ class ApiService {
   async getFeedback(sessionId: string): Promise<SessionFeedback> {
     const response: AxiosResponse<SessionFeedback> = await this.api.get(`/sessions/${sessionId}/feedback`);
     return response.data;
+  }
+
+  // Evaluates the session with AI and completes it; returns stored feedback if it already exists
+  async generateFeedback(sessionId: string): Promise<SessionFeedback> {
+    return this.dedupeAiRequest(`feedback:${sessionId}`, async () => {
+      const response: AxiosResponse<SessionFeedback> = await this.api.post(`/sessions/${sessionId}/feedback`, undefined, {
+        timeout: config.api.aiTimeout,
+      });
+      return response.data;
+    });
   }
 
   // Payment methods

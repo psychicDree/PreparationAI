@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -13,20 +14,20 @@ import (
 type Config struct {
 	// Server configuration
 	Server ServerConfig `json:"server"`
-	
+
 	// Database configuration
 	Database DatabaseConfig `json:"database"`
-	
+
 	// Redis configuration
 	Redis RedisConfig `json:"redis"`
-	
+
 	// JWT configuration
 	JWT JWTConfig `json:"jwt"`
-	
+
 	// External services
 	OpenAI OpenAIConfig `json:"openai"`
 	Stripe StripeConfig `json:"stripe"`
-	
+
 	// Environment
 	Environment string `json:"environment"`
 }
@@ -64,9 +65,14 @@ type JWTConfig struct {
 }
 
 type OpenAIConfig struct {
-	APIKey  string `json:"api_key"`
-	Model   string `json:"model"`
-	MaxTokens int  `json:"max_tokens"`
+	APIKey    string        `json:"api_key"`
+	Model     string        `json:"model"`
+	MaxTokens int           `json:"max_tokens"`
+	BaseURL   string        `json:"base_url"`
+	Timeout   time.Duration `json:"timeout"`
+	// BaseURL may point at any OpenAI-compatible endpoint, including a local engine such as Ollama.
+	// Mock returns sample questions and feedback instead of calling OpenAI (local development only).
+	Mock bool `json:"mock"`
 }
 
 type StripeConfig struct {
@@ -118,6 +124,9 @@ func LoadConfig() (*Config, error) {
 			APIKey:    getEnv("OPENAI_API_KEY", ""),
 			Model:     getEnv("OPENAI_MODEL", "gpt-4"),
 			MaxTokens: getIntEnv("OPENAI_MAX_TOKENS", 1000),
+			BaseURL:   getEnv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+			Timeout:   getDurationEnv("OPENAI_TIMEOUT", 60*time.Second),
+			Mock:      getBoolEnv("OPENAI_MOCK", false),
 		},
 		Stripe: StripeConfig{
 			SecretKey:      getEnv("STRIPE_SECRET_KEY", ""),
@@ -144,7 +153,10 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate OpenAI API key
-	if c.OpenAI.APIKey == "" {
+	if c.OpenAI.Mock && c.Environment == "production" {
+		return fmt.Errorf("OPENAI_MOCK must not be enabled in production")
+	}
+	if c.OpenAI.APIKey == "" && !c.OpenAI.Mock && c.OpenAI.RequiresAPIKey() {
 		return fmt.Errorf("OPENAI_API_KEY is required")
 	}
 
@@ -158,6 +170,16 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// RequiresAPIKey reports whether the configured endpoint is hosted OpenAI; local
+// OpenAI-compatible engines (Ollama, LM Studio, llama.cpp) usually run without a key.
+func (o OpenAIConfig) RequiresAPIKey() bool {
+	u, err := url.Parse(o.BaseURL)
+	if err != nil || u.Host == "" {
+		return true
+	}
+	return u.Hostname() == "api.openai.com"
 }
 
 // GetDatabaseDSN returns the database connection string

@@ -8,9 +8,9 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"preparation-ai/internal/config"
+	"preparation-ai/internal/database"
 	"preparation-ai/internal/handlers"
 	"preparation-ai/internal/middleware"
-	"preparation-ai/internal/database"
 )
 
 func main() {
@@ -47,14 +47,14 @@ func main() {
 
 	// Middleware
 	app.Use(logger.New())
-	
+
 	// CORS configuration
 	corsOrigins := "http://localhost:5173,http://localhost:3000"
 	if cfg.IsProduction() {
 		// In production, you'd set specific allowed origins
 		corsOrigins = "https://yourdomain.com"
 	}
-	
+
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     corsOrigins,
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
@@ -86,7 +86,7 @@ func main() {
 
 	// Protected routes
 	protected := api.Group("/", middleware.Protected())
-	
+
 	// User routes
 	protected.Get("/profile", handlers.GetProfile)
 	protected.Put("/profile", handlers.UpdateProfile)
@@ -98,6 +98,7 @@ func main() {
 	protected.Post("/sessions/:id/questions", handlers.GenerateQuestions)
 	protected.Post("/sessions/:id/responses", handlers.SubmitResponse)
 	protected.Get("/sessions/:id/feedback", handlers.GetFeedback)
+	protected.Post("/sessions/:id/feedback", handlers.GenerateFeedback)
 
 	// Payment routes
 	protected.Post("/payments/create-intent", handlers.CreatePaymentIntent)

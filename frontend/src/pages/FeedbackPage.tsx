@@ -1,5 +1,8 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
+import apiService, { getApiErrorMessage } from '../services/api';
+import type { SessionFeedback } from '../types';
 import { 
   StarIcon, 
   CheckCircleIcon, 
@@ -12,10 +15,35 @@ import {
 const FeedbackPage = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { feedback } = useAppStore();
+  const { feedback, setFeedback, isAuthenticated } = useAppStore();
+  // Guests (and the local placeholder session) see demo feedback; AI evaluation needs a saved session
+  const isDemo = !isAuthenticated || !sessionId || sessionId === 'temp-session';
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
-  // Mock feedback data
-  const mockFeedback = {
+  useEffect(() => {
+    if (isDemo) return;
+
+    let cancelled = false;
+    setError(null);
+
+    // Generates feedback on first visit; the backend returns the stored report afterwards
+    apiService
+      .generateFeedback(sessionId)
+      .then((result) => {
+        if (!cancelled) setFeedback(result);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(getApiErrorMessage(err, 'Failed to generate your feedback.'));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, isDemo, attempt, setFeedback]);
+
+  // Demo feedback for guest sessions
+  const demoFeedback: SessionFeedback = {
     id: 'feedback-1',
     session_id: sessionId || '',
     technical_score: 7.5,
@@ -40,7 +68,8 @@ const FeedbackPage = () => {
     created_at: new Date().toISOString()
   };
 
-  const currentFeedback = feedback || mockFeedback;
+  const sessionFeedback = feedback?.session_id === sessionId ? feedback : null;
+  const currentFeedback = isDemo ? demoFeedback : sessionFeedback;
 
   const getScoreColor = (score: number) => {
     if (score >= 8) return 'text-green-600';
@@ -71,8 +100,47 @@ const FeedbackPage = () => {
     return stars;
   };
 
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-96">
+        <div className="text-center max-w-md">
+          <ExclamationTriangleIcon className="w-12 h-12 text-orange-500 mx-auto mb-4" />
+          <p className="text-gray-900 font-medium mb-2">We couldn't generate your feedback.</p>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={() => setAttempt((value) => value + 1)}
+            className="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentFeedback) {
+    return (
+      <div className="flex items-center justify-center min-h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Analyzing your answers...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-6xl mx-auto">
+      {isDemo && (
+        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+          This is a sample report.{' '}
+          <Link to="/onboarding" className="font-medium underline">
+            Sign in
+          </Link>{' '}
+          to get AI feedback on your own answers.
+        </div>
+      )}
+
       <div className="text-center mb-8">
         <h1 className="text-4xl font-bold text-gray-900 mb-4">
           Interview Feedback Report
