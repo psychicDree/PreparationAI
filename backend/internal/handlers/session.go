@@ -47,7 +47,7 @@ func GetSessions(c *fiber.Ctx) error {
 func GetSession(c *fiber.Ctx) error {
 	sessionID := c.Params("id")
 	userID := c.Locals("userID").(string)
-	
+
 	// Get session from database
 	session, err := services.GetSessionByID(sessionID, userID)
 	if err != nil {

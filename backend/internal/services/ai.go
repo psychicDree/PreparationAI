@@ -7,9 +7,9 @@ import (
 )
 
 type OpenAIRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	MaxTokens int      `json:"max_tokens"`
+	Model     string    `json:"model"`
+	Messages  []Message `json:"messages"`
+	MaxTokens int       `json:"max_tokens"`
 }
 
 type Message struct {
@@ -28,7 +28,7 @@ type Choice struct {
 func GenerateInterviewQuestions(sessionID string, experience int, preferences []string) ([]models.Question, error) {
 	// TODO: Implement OpenAI API integration
 	// For now, return mock questions
-	
+
 	questions := []models.Question{
 		{
 			ID:           "q1",
@@ -59,7 +59,7 @@ func GenerateInterviewQuestions(sessionID string, experience int, preferences []
 func EvaluateResponse(questionText string, responseText string) (*models.SessionFeedback, error) {
 	// TODO: Implement OpenAI API integration for response evaluation
 	// For now, return mock feedback
-	
+
 	feedback := &models.SessionFeedback{
 		TechnicalScore:      7.5,
 		CommunicationScore:  6.5,
@@ -84,7 +84,7 @@ func callOpenAIAPI(prompt string) (string, error) {
 
 	// TODO: Implement actual OpenAI API call
 	// This is a placeholder implementation
-	
+
 	request := OpenAIRequest{
 		Model: cfg.OpenAI.Model,
 		Messages: []Message{
