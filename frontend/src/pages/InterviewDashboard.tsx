@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import apiService, { getApiErrorMessage } from '../services/api';
+import wsService from '../services/websocket';
 import type { Question, UserResponse } from '../types';
 import { 
   PlayIcon, 
@@ -98,6 +99,26 @@ const InterviewDashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, isDemo, loadAttempt, setQuestions, setFeedback]);
 
+  // Open the realtime interview channel once a logged-in user starts a
+  // preparation session. Guests and the local placeholder session are not
+  // connected (the channel requires a JWT and a saved session).
+  useEffect(() => {
+    if (isDemo || !sessionId) return;
+
+    let active = true;
+    wsService
+      .connect(sessionId)
+      .then(() => {
+        if (active) wsService.joinSession(sessionId);
+      })
+      .catch((error) => console.error('WebSocket connection failed:', error));
+
+    return () => {
+      active = false;
+      wsService.disconnect();
+    };
+  }, [isDemo, sessionId]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setTimeRemaining(prev => {
@@ -111,6 +132,9 @@ const InterviewDashboard = () => {
     }, 1000);
 
     return () => clearInterval(timer);
+    // The timer is intentionally set up once on mount; depending on the
+    // submit handler would reset the countdown on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const formatTime = (seconds: number) => {
@@ -151,7 +175,12 @@ const InterviewDashboard = () => {
       }
 
       addResponse(response);
-      
+
+      // Notify the interview channel that a response was submitted.
+      if (!isDemo && sessionId) {
+        wsService.notifyResponseSubmitted(sessionId, response.id);
+      }
+
       // Move to next question or finish
       if (currentQuestionIndex < questions.length - 1) {
         setCurrentQuestionIndex(currentQuestionIndex + 1);

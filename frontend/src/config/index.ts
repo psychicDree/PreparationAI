@@ -19,6 +19,12 @@ interface Config {
   stripe: {
     publishableKey: string;
   };
+
+  // Supabase
+  supabase: {
+    url: string;
+    publishableKey: string;
+  };
   
   // Application Settings
   app: {
@@ -81,7 +87,12 @@ const loadConfig = (): Config => {
     stripe: {
       publishableKey: getEnvVar('VITE_STRIPE_PUBLISHABLE_KEY', ''),
     },
-    
+
+    supabase: {
+      url: getEnvVar('VITE_SUPABASE_URL', ''),
+      publishableKey: getEnvVar('VITE_SUPABASE_PUBLISHABLE_KEY', ''),
+    },
+
     app: {
       name: 'PreparationAI',
       version: '1.0.0',

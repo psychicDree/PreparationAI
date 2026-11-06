@@ -78,8 +78,9 @@ const OnboardingPage = () => {
         setSuccess('Account created successfully! Redirecting...');
         setTimeout(() => navigate(intendedDestination), 1000);
       }
-    } catch (error: any) {
-      setError(error.response?.data?.error || 'Authentication failed');
+    } catch (error) {
+      const message = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setError(message || 'Authentication failed');
     } finally {
       setIsLoading(false);
     }
@@ -93,7 +94,7 @@ const OnboardingPage = () => {
       // For now, we'll simulate OAuth flow
       // In production, this would redirect to the OAuth provider
       setError(`${provider} OAuth integration coming soon!`);
-    } catch (error: any) {
+    } catch {
       setError(`Failed to authenticate with ${provider}`);
     } finally {
       setIsLoading(false);

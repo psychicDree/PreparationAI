@@ -134,6 +134,28 @@ func GetSessionByID(sessionID, userID string) (*models.InterviewSession, error) 
 	return &session, nil
 }
 
+// MarkSessionPaid records the PaymentIntent on a session once payment has been
+// verified with Stripe.
+func MarkSessionPaid(sessionID, paymentIntentID string) error {
+	query := `
+		UPDATE interview_sessions
+		SET payment_intent_id = $1, updated_at = $2
+		WHERE id = $3
+	`
+
+	result, err := database.DB.Exec(query, paymentIntentID, time.Now(), sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to mark session paid: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err == nil && rows == 0 {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	return nil
+}
+
 // CreateSessionQuestions creates questions for a session unless it already has some
 func CreateSessionQuestions(sessionID string, questions []models.Question) error {
 	tx, err := database.DB.Begin()

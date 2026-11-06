@@ -33,14 +33,18 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port         string        `json:"port"`
-	Host         string        `json:"host"`
-	ReadTimeout  time.Duration `json:"read_timeout"`
-	WriteTimeout time.Duration `json:"write_timeout"`
-	IdleTimeout  time.Duration `json:"idle_timeout"`
+	Port           string        `json:"port"`
+	Host           string        `json:"host"`
+	ReadTimeout    time.Duration `json:"read_timeout"`
+	WriteTimeout   time.Duration `json:"write_timeout"`
+	IdleTimeout    time.Duration `json:"idle_timeout"`
+	AllowedOrigins string        `json:"allowed_origins"`
 }
 
 type DatabaseConfig struct {
+	// URL, when set, is a full Postgres connection string (e.g. the one
+	// Supabase provides) and takes precedence over the discrete fields below.
+	URL      string `json:"url"`
 	Host     string `json:"host"`
 	Port     string `json:"port"`
 	User     string `json:"user"`
@@ -106,13 +110,15 @@ func Load() *Config {
 
 	config := &Config{
 		Server: ServerConfig{
-			Port:         getEnv("PORT", "8080"),
-			Host:         getEnv("SERVER_HOST", "0.0.0.0"),
-			ReadTimeout:  getDurationEnv("SERVER_READ_TIMEOUT", 30*time.Second),
-			WriteTimeout: getDurationEnv("SERVER_WRITE_TIMEOUT", 30*time.Second),
-			IdleTimeout:  getDurationEnv("SERVER_IDLE_TIMEOUT", 120*time.Second),
+			Port:           getEnv("PORT", "8080"),
+			Host:           getEnv("SERVER_HOST", "0.0.0.0"),
+			ReadTimeout:    getDurationEnv("SERVER_READ_TIMEOUT", 30*time.Second),
+			WriteTimeout:   getDurationEnv("SERVER_WRITE_TIMEOUT", 30*time.Second),
+			IdleTimeout:    getDurationEnv("SERVER_IDLE_TIMEOUT", 120*time.Second),
+			AllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"),
 		},
 		Database: DatabaseConfig{
+			URL:      getEnv("DATABASE_URL", ""),
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnv("DB_PORT", "5432"),
 			User:     getEnv("DB_USER", "postgres"),
@@ -191,7 +197,13 @@ func (o OpenAIConfig) RequiresAPIKey() bool {
 }
 
 // GetDatabaseDSN returns the database connection string
+// GetDatabaseDSN returns the database connection string. When DATABASE_URL is
+// set (e.g. the Supabase connection string) it is used directly; otherwise the
+// DSN is assembled from the discrete DB_* fields.
 func (c *Config) GetDatabaseDSN() string {
+	if c.Database.URL != "" {
+		return c.Database.URL
+	}
 	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		c.Database.Host,
 		c.Database.Port,
