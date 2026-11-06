@@ -2,6 +2,7 @@ package services
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -134,13 +135,18 @@ func GetSessionByID(sessionID, userID string) (*models.InterviewSession, error) 
 	return &session, nil
 }
 
+// ErrSessionAlreadyPaid is returned by MarkSessionPaid when the session is
+// already linked to a different PaymentIntent.
+var ErrSessionAlreadyPaid = errors.New("session already paid with a different payment")
+
 // MarkSessionPaid records the PaymentIntent on a session once payment has been
-// verified with Stripe.
+// verified with Stripe. It is idempotent for the same PaymentIntent and never
+// replaces a different one already recorded on the session.
 func MarkSessionPaid(sessionID, paymentIntentID string) error {
 	query := `
 		UPDATE interview_sessions
 		SET payment_intent_id = $1, updated_at = $2
-		WHERE id = $3
+		WHERE id = $3 AND (payment_intent_id IS NULL OR payment_intent_id = $1)
 	`
 
 	result, err := database.DB.Exec(query, paymentIntentID, time.Now(), sessionID)
@@ -149,11 +155,21 @@ func MarkSessionPaid(sessionID, paymentIntentID string) error {
 	}
 
 	rows, err := result.RowsAffected()
-	if err == nil && rows == 0 {
-		return fmt.Errorf("session not found: %s", sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to mark session paid: %w", err)
+	}
+	if rows > 0 {
+		return nil
 	}
 
-	return nil
+	var exists bool
+	if err := database.DB.QueryRow(`SELECT EXISTS (SELECT 1 FROM interview_sessions WHERE id = $1)`, sessionID).Scan(&exists); err != nil {
+		return fmt.Errorf("failed to check session: %w", err)
+	}
+	if exists {
+		return ErrSessionAlreadyPaid
+	}
+	return fmt.Errorf("session not found: %s", sessionID)
 }
 
 // CreateSessionQuestions creates questions for a session unless it already has some

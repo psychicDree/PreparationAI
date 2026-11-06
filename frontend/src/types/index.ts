@@ -104,11 +104,13 @@ export interface SessionFeedback {
 // Payment types
 export interface PaymentIntent {
   client_secret: string;
+  amount: number; // in cents, set by the server from the session type
 }
 
+// The server prices the payment from the session's type; the client only says
+// which of its sessions it is paying for.
 export interface CreatePaymentIntentRequest {
-  session_type: SessionType;
-  amount: number;
+  session_id: string;
 }
 
 // Subscription types

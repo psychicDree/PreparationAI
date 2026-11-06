@@ -41,9 +41,9 @@ func CreatePaymentIntent(userID, sessionID string, amount int64, sessionType str
 
 // ConfirmPayment verifies a PaymentIntent has succeeded with Stripe and, if so,
 // marks the associated session as paid. It returns an error if the payment has
-// not actually succeeded, so the caller must not activate the session on a
-// client claim alone.
-func ConfirmPayment(paymentIntentID string, sessionID string) error {
+// not actually succeeded, or was created for a different session or user, so
+// the caller must not activate the session on a client claim alone.
+func ConfirmPayment(paymentIntentID, sessionID, userID string) error {
 	cfg := config.AppConfig
 	if cfg == nil {
 		return fmt.Errorf("configuration not loaded")
@@ -56,11 +56,28 @@ func ConfirmPayment(paymentIntentID string, sessionID string) error {
 		return fmt.Errorf("failed to retrieve payment intent: %w", err)
 	}
 
-	if pi.Status != stripe.PaymentIntentStatusSucceeded {
-		return fmt.Errorf("payment not completed: status %s", pi.Status)
+	if err := verifyPaymentIntent(pi, sessionID, userID); err != nil {
+		return err
 	}
 
 	return MarkSessionPaid(sessionID, paymentIntentID)
+}
+
+// verifyPaymentIntent checks that a PaymentIntent has succeeded and was created
+// by CreatePaymentIntent for this session and user. Only this server can set
+// PaymentIntent metadata (it needs the Stripe secret key), so the metadata
+// binding stops one payment from being reused to mark other sessions paid.
+func verifyPaymentIntent(pi *stripe.PaymentIntent, sessionID, userID string) error {
+	if pi.Status != stripe.PaymentIntentStatusSucceeded {
+		return fmt.Errorf("payment not completed: status %s", pi.Status)
+	}
+	if pi.Metadata["session_id"] == "" || pi.Metadata["session_id"] != sessionID {
+		return fmt.Errorf("payment intent does not belong to this session")
+	}
+	if pi.Metadata["user_id"] == "" || pi.Metadata["user_id"] != userID {
+		return fmt.Errorf("payment intent does not belong to this user")
+	}
+	return nil
 }
 
 func GetSessionPricing(sessionType string) int64 {
