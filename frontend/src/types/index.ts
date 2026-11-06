@@ -56,6 +56,19 @@ export interface CreateSessionRequest {
   tags: string[];
 }
 
+export interface GenerateQuestionsRequest {
+  experience: number;
+  preferences: string[];
+  session_type?: SessionType;
+  tags?: string[];
+}
+
+// Answers collected on the warm-up screen, used to tailor AI-generated questions
+export interface InterviewSetup {
+  experience: number;
+  preferences: string[];
+}
+
 // Question types
 export interface Question {
   id: string;

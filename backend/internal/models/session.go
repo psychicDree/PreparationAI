@@ -67,8 +67,11 @@ type CreateSessionRequest struct {
 }
 
 type GenerateQuestionsRequest struct {
-	Experience  int      `json:"experience" validate:"required"`
-	Preferences []string `json:"preferences" validate:"required"`
+	Experience  int      `json:"experience"`
+	Preferences []string `json:"preferences"`
+	// Optional setup chosen after the session was created; stored on the session when present.
+	SessionType SessionType `json:"session_type,omitempty"`
+	Tags        []string    `json:"tags,omitempty"`
 }
 
 type SubmitResponseRequest struct {

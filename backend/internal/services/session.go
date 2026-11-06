@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"preparation-ai/internal/database"
 	"preparation-ai/internal/models"
+
+	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 // CreateInterviewSession creates a new interview session
@@ -28,7 +30,7 @@ func CreateInterviewSession(userID string, req models.CreateSessionRequest) (*mo
 		userID,
 		req.SessionType,
 		models.SessionActive,
-		req.Tags,
+		pq.Array(req.Tags),
 		now,
 		now,
 	).Scan(
@@ -36,7 +38,7 @@ func CreateInterviewSession(userID string, req models.CreateSessionRequest) (*mo
 		&session.UserID,
 		&session.SessionType,
 		&session.Status,
-		&session.Tags,
+		pq.Array(&session.Tags),
 		&session.CreatedAt,
 		&session.UpdatedAt,
 	)
@@ -73,7 +75,7 @@ func GetUserSessions(userID string) ([]models.InterviewSession, error) {
 			&session.UserID,
 			&session.SessionType,
 			&session.Status,
-			&session.Tags,
+			pq.Array(&session.Tags),
 			&paymentIntentID,
 			&session.CreatedAt,
 			&session.UpdatedAt,
@@ -112,7 +114,7 @@ func GetSessionByID(sessionID, userID string) (*models.InterviewSession, error) 
 		&session.UserID,
 		&session.SessionType,
 		&session.Status,
-		&session.Tags,
+		pq.Array(&session.Tags),
 		&paymentIntentID,
 		&session.CreatedAt,
 		&session.UpdatedAt,
@@ -154,13 +156,26 @@ func MarkSessionPaid(sessionID, paymentIntentID string) error {
 	return nil
 }
 
-// CreateSessionQuestions creates questions for a session
+// CreateSessionQuestions creates questions for a session unless it already has some
 func CreateSessionQuestions(sessionID string, questions []models.Question) error {
 	tx, err := database.DB.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
+
+	// Lock the session so concurrent generations cannot both insert a question set
+	if _, err := tx.Exec(`SELECT id FROM interview_sessions WHERE id = $1 FOR UPDATE`, sessionID); err != nil {
+		return fmt.Errorf("failed to lock session: %w", err)
+	}
+
+	var exists bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM session_questions WHERE session_id = $1)`, sessionID).Scan(&exists); err != nil {
+		return fmt.Errorf("failed to check questions: %w", err)
+	}
+	if exists {
+		return tx.Commit()
+	}
 
 	query := `
 		INSERT INTO session_questions (id, session_id, question_text, question_type, order_index, created_at)
@@ -243,9 +258,9 @@ func GetSessionFeedback(sessionID, userID string) (*models.SessionFeedback, erro
 		&feedback.TechnicalScore,
 		&feedback.CommunicationScore,
 		&feedback.ProblemSolvingScore,
-		&feedback.Strengths,
-		&feedback.Weaknesses,
-		&feedback.Recommendations,
+		pq.Array(&feedback.Strengths),
+		pq.Array(&feedback.Weaknesses),
+		pq.Array(&feedback.Recommendations),
 		&feedback.CreatedAt,
 	)
 
@@ -259,32 +274,192 @@ func GetSessionFeedback(sessionID, userID string) (*models.SessionFeedback, erro
 	return &feedback, nil
 }
 
-// CreateSessionFeedback creates feedback for a session
+// CreateSessionFeedback stores feedback for a session; if feedback already exists it is loaded into feedback instead
 func CreateSessionFeedback(sessionID string, feedback *models.SessionFeedback) error {
+	tx, err := database.DB.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Lock the session so concurrent evaluations cannot both insert feedback
+	if _, err := tx.Exec(`SELECT id FROM interview_sessions WHERE id = $1 FOR UPDATE`, sessionID); err != nil {
+		return fmt.Errorf("failed to lock session: %w", err)
+	}
+
+	err = tx.QueryRow(`
+		SELECT id, session_id, technical_score, communication_score, problem_solving_score,
+		       strengths, weaknesses, recommendations, created_at
+		FROM session_feedback
+		WHERE session_id = $1
+		ORDER BY created_at
+		LIMIT 1
+	`, sessionID).Scan(
+		&feedback.ID,
+		&feedback.SessionID,
+		&feedback.TechnicalScore,
+		&feedback.CommunicationScore,
+		&feedback.ProblemSolvingScore,
+		pq.Array(&feedback.Strengths),
+		pq.Array(&feedback.Weaknesses),
+		pq.Array(&feedback.Recommendations),
+		&feedback.CreatedAt,
+	)
+	if err == nil {
+		return tx.Commit()
+	}
+	if err != sql.ErrNoRows {
+		return fmt.Errorf("failed to check feedback: %w", err)
+	}
+
 	feedbackID := uuid.New().String()
+	now := time.Now()
 
 	query := `
-		INSERT INTO session_feedback (id, session_id, technical_score, communication_score, 
+		INSERT INTO session_feedback (id, session_id, technical_score, communication_score,
 		                            problem_solving_score, strengths, weaknesses, recommendations, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 
-	_, err := database.DB.Exec(
+	_, err = tx.Exec(
 		query,
 		feedbackID,
 		sessionID,
 		feedback.TechnicalScore,
 		feedback.CommunicationScore,
 		feedback.ProblemSolvingScore,
-		feedback.Strengths,
-		feedback.Weaknesses,
-		feedback.Recommendations,
-		time.Now(),
+		pq.Array(feedback.Strengths),
+		pq.Array(feedback.Weaknesses),
+		pq.Array(feedback.Recommendations),
+		now,
 	)
-
 	if err != nil {
 		return fmt.Errorf("failed to create feedback: %w", err)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit feedback: %w", err)
+	}
+
+	feedback.ID = feedbackID
+	feedback.SessionID = sessionID
+	feedback.CreatedAt = now
 	return nil
+}
+
+// UpdateSessionSetup stores the setup and warm-up answers chosen before questions are generated
+func UpdateSessionSetup(sessionID string, sessionType models.SessionType, tags []string, experience int, preferences []string) error {
+	query := `
+		UPDATE interview_sessions
+		SET session_type = $2, tags = $3, experience = $4, preferences = $5
+		WHERE id = $1
+	`
+
+	if preferences == nil {
+		preferences = []string{}
+	}
+	if _, err := database.DB.Exec(query, sessionID, sessionType, pq.Array(tags), experience, pq.Array(preferences)); err != nil {
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateSessionStatus sets the status of a session
+func UpdateSessionStatus(sessionID string, status models.SessionStatus) error {
+	query := `UPDATE interview_sessions SET status = $2 WHERE id = $1`
+
+	if _, err := database.DB.Exec(query, sessionID, status); err != nil {
+		return fmt.Errorf("failed to update session status: %w", err)
+	}
+
+	return nil
+}
+
+// GetSessionQuestions retrieves the questions for a session in order
+func GetSessionQuestions(sessionID string) ([]models.Question, error) {
+	query := `
+		SELECT id, session_id, question_text, question_type, order_index, created_at
+		FROM session_questions
+		WHERE session_id = $1
+		ORDER BY order_index
+	`
+
+	rows, err := database.DB.Query(query, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get questions: %w", err)
+	}
+	defer rows.Close()
+
+	questions := []models.Question{}
+	for rows.Next() {
+		var question models.Question
+		if err := rows.Scan(
+			&question.ID,
+			&question.SessionID,
+			&question.QuestionText,
+			&question.QuestionType,
+			&question.OrderIndex,
+			&question.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan question: %w", err)
+		}
+		questions = append(questions, question)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating questions: %w", err)
+	}
+
+	return questions, nil
+}
+
+// QuestionBelongsToSession reports whether a question is part of a session
+func QuestionBelongsToSession(questionID, sessionID string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM session_questions WHERE id = $1 AND session_id = $2)`
+
+	var exists bool
+	if err := database.DB.QueryRow(query, questionID, sessionID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("failed to check question: %w", err)
+	}
+
+	return exists, nil
+}
+
+// GetSessionAnswers pairs each session question with its latest response, if any
+func GetSessionAnswers(sessionID string) ([]QuestionAnswer, error) {
+	query := `
+		SELECT q.question_text, q.question_type, COALESCE(r.response_text, '')
+		FROM session_questions q
+		LEFT JOIN LATERAL (
+			SELECT response_text
+			FROM user_responses
+			WHERE question_id = q.id
+			ORDER BY submitted_at DESC
+			LIMIT 1
+		) r ON true
+		WHERE q.session_id = $1
+		ORDER BY q.order_index
+	`
+
+	rows, err := database.DB.Query(query, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get answers: %w", err)
+	}
+	defer rows.Close()
+
+	var answers []QuestionAnswer
+	for rows.Next() {
+		var answer QuestionAnswer
+		if err := rows.Scan(&answer.QuestionText, &answer.QuestionType, &answer.ResponseText); err != nil {
+			return nil, fmt.Errorf("failed to scan answer: %w", err)
+		}
+		answers = append(answers, answer)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating answers: %w", err)
+	}
+
+	return answers, nil
 }

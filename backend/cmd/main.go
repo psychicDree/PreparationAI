@@ -105,6 +105,7 @@ func main() {
 	protected.Post("/sessions/:id/questions", handlers.GenerateQuestions)
 	protected.Post("/sessions/:id/responses", handlers.SubmitResponse)
 	protected.Get("/sessions/:id/feedback", handlers.GetFeedback)
+	protected.Post("/sessions/:id/feedback", handlers.GenerateFeedback)
 
 	// Payment routes
 	protected.Post("/payments/create-intent", handlers.CreatePaymentIntent)

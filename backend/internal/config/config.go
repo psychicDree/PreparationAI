@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -68,9 +69,14 @@ type JWTConfig struct {
 }
 
 type OpenAIConfig struct {
-	APIKey    string `json:"api_key"`
-	Model     string `json:"model"`
-	MaxTokens int    `json:"max_tokens"`
+	APIKey    string        `json:"api_key"`
+	Model     string        `json:"model"`
+	MaxTokens int           `json:"max_tokens"`
+	BaseURL   string        `json:"base_url"`
+	Timeout   time.Duration `json:"timeout"`
+	// BaseURL may point at any OpenAI-compatible endpoint, including a local engine such as Ollama.
+	// Mock returns sample questions and feedback instead of calling OpenAI (local development only).
+	Mock bool `json:"mock"`
 }
 
 type StripeConfig struct {
@@ -81,8 +87,21 @@ type StripeConfig struct {
 
 var AppConfig *Config
 
-// LoadConfig loads configuration from environment variables
+// LoadConfig loads configuration from environment variables and validates it for the API server
 func LoadConfig() (*Config, error) {
+	config := Load()
+
+	// Validate required configuration
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("configuration validation failed: %w", err)
+	}
+
+	return config, nil
+}
+
+// Load reads configuration from environment variables without validation, for tools such as the
+// dataset exporter that only need part of it (e.g. the database settings)
+func Load() *Config {
 	// Load .env file if it exists
 	if err := godotenv.Load(); err != nil {
 		// .env file is optional, so we don't return an error
@@ -124,6 +143,9 @@ func LoadConfig() (*Config, error) {
 			APIKey:    getEnv("OPENAI_API_KEY", ""),
 			Model:     getEnv("OPENAI_MODEL", "gpt-4"),
 			MaxTokens: getIntEnv("OPENAI_MAX_TOKENS", 1000),
+			BaseURL:   getEnv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+			Timeout:   getDurationEnv("OPENAI_TIMEOUT", 60*time.Second),
+			Mock:      getBoolEnv("OPENAI_MOCK", false),
 		},
 		Stripe: StripeConfig{
 			SecretKey:      getEnv("STRIPE_SECRET_KEY", ""),
@@ -133,13 +155,8 @@ func LoadConfig() (*Config, error) {
 		Environment: getEnv("NODE_ENV", "development"),
 	}
 
-	// Validate required configuration
-	if err := config.Validate(); err != nil {
-		return nil, fmt.Errorf("configuration validation failed: %w", err)
-	}
-
 	AppConfig = config
-	return config, nil
+	return config
 }
 
 // Validate checks if all required configuration is present
@@ -150,7 +167,10 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate OpenAI API key
-	if c.OpenAI.APIKey == "" {
+	if c.OpenAI.Mock && c.Environment == "production" {
+		return fmt.Errorf("OPENAI_MOCK must not be enabled in production")
+	}
+	if c.OpenAI.APIKey == "" && !c.OpenAI.Mock && c.OpenAI.RequiresAPIKey() {
 		return fmt.Errorf("OPENAI_API_KEY is required")
 	}
 
@@ -166,6 +186,17 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// RequiresAPIKey reports whether the configured endpoint is hosted OpenAI; local
+// OpenAI-compatible engines (Ollama, LM Studio, llama.cpp) usually run without a key.
+func (o OpenAIConfig) RequiresAPIKey() bool {
+	u, err := url.Parse(o.BaseURL)
+	if err != nil || u.Host == "" {
+		return true
+	}
+	return u.Hostname() == "api.openai.com"
+}
+
+// GetDatabaseDSN returns the database connection string
 // GetDatabaseDSN returns the database connection string. When DATABASE_URL is
 // set (e.g. the Supabase connection string) it is used directly; otherwise the
 // DSN is assembled from the discrete DB_* fields.

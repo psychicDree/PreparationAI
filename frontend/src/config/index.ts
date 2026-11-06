@@ -6,6 +6,8 @@ interface Config {
   api: {
     baseUrl: string;
     timeout: number;
+    // AI question generation and evaluation can take much longer than ordinary requests
+    aiTimeout: number;
   };
   
   // WebSocket Configuration
@@ -75,6 +77,7 @@ const loadConfig = (): Config => {
     api: {
       baseUrl: getEnvVar('VITE_API_URL', 'http://localhost:8080/api/v1'),
       timeout: getNumberEnvVar('VITE_API_TIMEOUT', 10000),
+      aiTimeout: getNumberEnvVar('VITE_AI_TIMEOUT', 90000),
     },
     
     ws: {

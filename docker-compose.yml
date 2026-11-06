@@ -15,6 +15,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
       - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+      - ./database/question_bank_seed.sql:/docker-entrypoint-initdb.d/03-question-bank.sql
     networks:
       - preparation-ai-network
 
@@ -47,7 +48,8 @@ services:
       - REDIS_URL=redis:6379
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - PORT=8080
-      - OPENAI_API_KEY=your-openai-api-key-here
+      # OPENAI_API_KEY comes from .env; set OPENAI_MOCK=true there to run without a key
+      - OPENAI_MOCK=${OPENAI_MOCK:-false}
       - STRIPE_SECRET_KEY=sk_test_fake_key
       - STRIPE_PUBLISHABLE_KEY=pk_test_fake_key
       - STRIPE_WEBHOOK_SECRET=whsec_fake_key

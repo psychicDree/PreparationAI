@@ -7,7 +7,7 @@ const WarmupPage = () => {
   const [experience, setExperience] = useState<number>(0);
   const [preferredStyles, setPreferredStyles] = useState<string[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const { setCurrentSession, currentSession } = useAppStore();
+  const { setCurrentSession, currentSession, setInterviewSetup } = useAppStore();
   const navigate = useNavigate();
 
   const experienceOptions = [
@@ -73,6 +73,7 @@ const WarmupPage = () => {
       setCurrentQuestion(currentQuestion + 1);
     } else {
       // All questions answered, proceed to payment
+      setInterviewSetup({ experience, preferences: preferredStyles });
       if (currentSession) {
         // Update the existing session
         const updatedSession = {
