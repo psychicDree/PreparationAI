@@ -155,6 +155,9 @@ jobs:
   # Security Scanning
   security-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # upload-sarif needs this on push runs
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
