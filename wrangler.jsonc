@@ -16,5 +16,8 @@
   },
   "compatibility_flags": [
     "nodejs_compat"
-  ]
+  ],
+  // Required by `wrangler preview`, which Cloudflare's Git build runs for
+  // branches other than main. Empty means previews use the settings above.
+  "previews": {}
 }
