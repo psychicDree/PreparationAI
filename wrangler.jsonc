@@ -3,8 +3,22 @@
   // Must match the Worker's name in the Cloudflare dashboard.
   "name": "preparationai",
   "compatibility_date": "2026-05-31",
+  // Mirrors the dashboard's Observability settings, so deploys from this
+  // config don't reset them: persisted logs (including invocation logs) on,
+  // tracing off.
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "persist": true
+    },
+    "traces": {
+      "enabled": false,
+      "head_sampling_rate": 1,
+      "persist": true
+    }
   },
   // Serves the built React app. Cloudflare's Git build runs the dashboard
   // build command (cd frontend && npm ci && npm run build) before deploying.
