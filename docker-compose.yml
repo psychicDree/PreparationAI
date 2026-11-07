@@ -50,9 +50,10 @@ services:
       - PORT=8080
       # OPENAI_API_KEY comes from .env; set OPENAI_MOCK=true there to run without a key
       - OPENAI_MOCK=${OPENAI_MOCK:-false}
-      - STRIPE_SECRET_KEY=sk_test_fake_key
-      - STRIPE_PUBLISHABLE_KEY=pk_test_fake_key
-      - STRIPE_WEBHOOK_SECRET=whsec_fake_key
+      # Stripe keys come from .env; the fake values are only fallbacks when unset
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_fake_key}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-pk_test_fake_key}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-whsec_fake_key}
     ports:
       - "8080:8080"
     depends_on:
