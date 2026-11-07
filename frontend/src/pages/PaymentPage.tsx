@@ -222,7 +222,7 @@ const PaymentPage = () => {
     : '';
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto px-4 py-12 sm:px-6">
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold text-gray-900 mb-4">
           Choose your interview session

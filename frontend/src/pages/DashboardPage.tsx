@@ -59,7 +59,7 @@ const DashboardPage = () => {
   const recentSessions = currentSessions.slice(0, 3);
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto px-4 py-12 sm:px-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
