@@ -1,13 +1,103 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
+import { isAxiosError } from 'axios';
 import { useAppStore } from '../store/useAppStore';
+import apiService, { getApiErrorMessage } from '../services/api';
+import { getStripe, paymentsEnabled } from '../utils/stripe';
 import type { SessionType } from '../types';
 import { CheckIcon, ClockIcon, StarIcon } from '@heroicons/react/24/outline';
 
+// Card form shown after the server has created a PaymentIntent. Cards that need
+// 3-D Secure, and other redirect-based methods, come back to /payment with
+// ?payment_intent=...&redirect_status=..., which PaymentPage handles on load.
+const CheckoutForm = ({
+  amountCents,
+  returnUrl,
+  onPaid,
+  onCancel,
+}: {
+  amountCents: number;
+  returnUrl: string;
+  onPaid: (paymentIntentId: string) => Promise<void>;
+  onCancel: () => void;
+}) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [isPaying, setIsPaying] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+
+    setIsPaying(true);
+    setMessage(null);
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: 'if_required',
+      confirmParams: { return_url: returnUrl },
+    });
+
+    if (error) {
+      setMessage(error.message ?? 'Your payment could not be completed.');
+      setIsPaying(false);
+      return;
+    }
+    if (paymentIntent?.status === 'succeeded') {
+      try {
+        await onPaid(paymentIntent.id);
+      } catch (err) {
+        setMessage(getApiErrorMessage(err, 'Payment went through, but we could not start your session. Please contact support.'));
+        setIsPaying(false);
+      }
+      return;
+    }
+    setMessage(
+      paymentIntent?.status === 'processing'
+        ? 'Your payment is processing. We will start your session once it completes.'
+        : 'Your payment could not be completed.'
+    );
+    setIsPaying(false);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="card max-w-xl mx-auto mb-8">
+      <h2 className="text-2xl font-bold text-gray-900 mb-1">Payment details</h2>
+      <p className="text-gray-600 mb-6">Total: ${(amountCents / 100).toFixed(2)} (one-time)</p>
+      <PaymentElement />
+      {message && (
+        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{message}</div>
+      )}
+      <div className="flex justify-between items-center mt-6">
+        <button type="button" onClick={onCancel} disabled={isPaying} className="btn-secondary">
+          Change session
+        </button>
+        <button
+          type="submit"
+          disabled={!stripe || !elements || isPaying}
+          className="px-8 py-3 rounded-lg font-medium transition-colors bg-primary-600 hover:bg-primary-700 text-white disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+        >
+          {isPaying ? 'Processing...' : `Pay $${(amountCents / 100).toFixed(2)}`}
+        </button>
+      </div>
+    </form>
+  );
+};
+
 const PaymentPage = () => {
   const [selectedSession, setSelectedSession] = useState<string>('');
-  const { setCurrentSession, currentSession } = useAppStore();
+  const { setCurrentSession, currentSession, isAuthenticated } = useAppStore();
   const navigate = useNavigate();
+  const [checkout, setCheckout] = useState<{ clientSecret: string; amount: number } | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const handledReturn = useRef(false);
+
+  // Real payment applies only to a signed-in user's saved session; guests and
+  // the local placeholder session continue to the demo interview as before.
+  const canPay =
+    paymentsEnabled() && isAuthenticated && !!currentSession && currentSession.id !== 'temp-session';
 
   const sessionTypes = [
     {
@@ -58,20 +148,78 @@ const PaymentPage = () => {
     setSelectedSession(sessionId);
   };
 
-  const handlePurchase = () => {
-    if (selectedSession && currentSession) {
-      const sessionType = sessionTypes.find(s => s.id === selectedSession);
-      if (sessionType) {
-        const updatedSession = {
-          ...currentSession,
-          session_type: sessionType.id as SessionType,
-          updated_at: new Date().toISOString(),
-        };
-        setCurrentSession(updatedSession);
-        navigate(`/interview/${currentSession.id}`);
+  // Records the chosen type locally and moves on to the interview.
+  const startInterview = useCallback((sessionType: SessionType) => {
+    if (!currentSession) return;
+    setCurrentSession({
+      ...currentSession,
+      session_type: sessionType,
+      updated_at: new Date().toISOString(),
+    });
+    navigate(`/interview/${currentSession.id}`);
+  }, [currentSession, setCurrentSession, navigate]);
+
+  // Tells the backend the payment succeeded; it re-checks the payment with
+  // Stripe (amount, session, user) before marking the session paid.
+  const finishPayment = useCallback(async (paymentIntentId: string, sessionType: SessionType) => {
+    if (!currentSession) return;
+    await apiService.confirmPayment(paymentIntentId, currentSession.id);
+    startInterview(sessionType);
+  }, [currentSession, startInterview]);
+
+  // Back from a redirect-based confirmation (e.g. 3-D Secure).
+  useEffect(() => {
+    if (handledReturn.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const paymentIntentId = params.get('payment_intent');
+    if (!paymentIntentId) return;
+    handledReturn.current = true;
+
+    const status = params.get('redirect_status');
+    const sessionType = (params.get('session_type') || currentSession?.session_type || 'standard') as SessionType;
+    if (status !== 'succeeded') {
+      setError('Your payment was not completed. Please try again.');
+      return;
+    }
+    setIsStarting(true);
+    finishPayment(paymentIntentId, sessionType).catch((err) => {
+      setError(getApiErrorMessage(err, 'Payment went through, but we could not start your session. Please contact support.'));
+      setIsStarting(false);
+    });
+  }, [currentSession, finishPayment]);
+
+  const handlePurchase = async () => {
+    if (!selectedSession || !currentSession) return;
+    const sessionType = selectedSession as SessionType;
+
+    if (!canPay) {
+      startInterview(sessionType);
+      return;
+    }
+
+    setIsStarting(true);
+    setError(null);
+    try {
+      const intent = await apiService.createPaymentIntent({
+        session_id: currentSession.id,
+        session_type: sessionType,
+      });
+      setCheckout({ clientSecret: intent.client_secret, amount: intent.amount });
+    } catch (err) {
+      if (isAxiosError(err) && err.response?.status === 409) {
+        // Already paid for: go straight to the interview.
+        startInterview(currentSession.session_type);
+        return;
       }
+      setError(getApiErrorMessage(err, 'Could not start checkout. Please try again.'));
+    } finally {
+      setIsStarting(false);
     }
   };
+
+  const returnUrl = currentSession
+    ? `${window.location.origin}/payment?session_type=${encodeURIComponent(selectedSession)}`
+    : '';
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -94,7 +242,7 @@ const PaymentPage = () => {
                 ? 'ring-2 ring-primary-500 shadow-lg'
                 : 'hover:shadow-md'
             }`}
-            onClick={() => handleSelectSession(session.id)}
+            onClick={() => !checkout && handleSelectSession(session.id)}
           >
             {/* Popular Badge */}
             {session.popular && (
@@ -179,27 +327,45 @@ const PaymentPage = () => {
         </div>
       </div>
 
-      {/* Navigation */}
-      <div className="flex justify-between items-center">
-        <button
-          onClick={() => navigate('/warmup')}
-          className="btn-secondary"
-        >
-          Back to Warmup
-        </button>
-        
-        <button
-          onClick={handlePurchase}
-          disabled={!selectedSession}
-          className={`px-8 py-3 rounded-lg font-medium transition-colors ${
-            !selectedSession
-              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              : 'bg-primary-600 hover:bg-primary-700 text-white'
-          }`}
-        >
-          Purchase & Start Interview
-        </button>
-      </div>
+      {error && (
+        <div className="max-w-xl mx-auto mb-6 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* Checkout */}
+      {checkout ? (
+        <Elements stripe={getStripe()} options={{ clientSecret: checkout.clientSecret, appearance: { theme: 'stripe' } }}>
+          <CheckoutForm
+            amountCents={checkout.amount}
+            returnUrl={returnUrl}
+            onPaid={(paymentIntentId) => finishPayment(paymentIntentId, selectedSession as SessionType)}
+            onCancel={() => setCheckout(null)}
+          />
+        </Elements>
+      ) : (
+        /* Navigation */
+        <div className="flex justify-between items-center">
+          <button
+            onClick={() => navigate('/warmup')}
+            className="btn-secondary"
+          >
+            Back to Warmup
+          </button>
+
+          <button
+            onClick={handlePurchase}
+            disabled={!selectedSession || isStarting}
+            className={`px-8 py-3 rounded-lg font-medium transition-colors ${
+              !selectedSession || isStarting
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-primary-600 hover:bg-primary-700 text-white'
+            }`}
+          >
+            {isStarting ? 'Starting checkout...' : canPay ? 'Continue to Payment' : 'Purchase & Start Interview'}
+          </button>
+        </div>
+      )}
 
       {/* Payment Methods */}
       <div className="mt-8 text-center">

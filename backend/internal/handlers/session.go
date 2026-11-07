@@ -3,6 +3,7 @@ package handlers
 import (
 	"log"
 
+	"preparation-ai/internal/config"
 	"preparation-ai/internal/models"
 	"preparation-ai/internal/services"
 
@@ -91,7 +92,15 @@ func GenerateQuestions(c *fiber.Ctx) error {
 		return c.JSON(existing)
 	}
 
-	if req.SessionType != "" {
+	paid := session.PaymentIntentID != ""
+	if !paid && config.AppConfig != nil && config.AppConfig.Stripe.RequirePayment {
+		return c.Status(402).JSON(fiber.Map{
+			"error": "Payment required for this session",
+		})
+	}
+
+	// A paid session's type is what was paid for; don't let the request change it.
+	if req.SessionType != "" && !paid {
 		if !isValidSessionType(req.SessionType) {
 			return c.Status(400).JSON(fiber.Map{
 				"error": "Invalid session type",

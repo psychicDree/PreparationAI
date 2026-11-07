@@ -111,6 +111,9 @@ export interface PaymentIntent {
 // which of its sessions it is paying for.
 export interface CreatePaymentIntentRequest {
   session_id: string;
+  // What the user is buying; the server stores it (only while unpaid) and
+  // prices the payment from it.
+  session_type?: SessionType;
 }
 
 // Subscription types
