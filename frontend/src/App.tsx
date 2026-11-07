@@ -13,6 +13,7 @@ import InterviewDashboard from './pages/InterviewDashboard';
 import FeedbackPage from './pages/FeedbackPage';
 import DashboardPage from './pages/DashboardPage';
 import PricingPage from './pages/PricingPage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 
 // Layout components
 import Header from './components/Header';
@@ -70,6 +71,9 @@ function App() {
             
             {/* Onboarding Page - Authentication */}
             <Route path="/onboarding" element={<OnboardingPage />} />
+
+            {/* Social sign-in return (Supabase Auth: Google, GitHub, LinkedIn, Apple) */}
+            <Route path="/auth/callback" element={<AuthCallbackPage />} />
             
             {/* Pricing Page - Subscription plans */}
             <Route path="/pricing" element={<PricingPage />} />

@@ -52,6 +52,48 @@ Already wired in the repo:
   build variables on the Cloudflare Worker for production. The publishable (anon) key is
   safe to ship to the browser; data is protected by RLS, not key secrecy.
 
+## 2a. Social sign-in — Supabase Auth (Google, GitHub, LinkedIn, Apple)
+
+The sign-in page offers Google, GitHub, LinkedIn and Apple through Supabase Auth.
+The flow:
+
+1. The browser calls `supabase.auth.signInWithOAuth` (PKCE) and the provider
+   redirects back to `/auth/callback`.
+2. `AuthCallbackPage` exchanges the code for a Supabase session and posts its
+   access token to `POST /api/v1/auth/supabase`.
+3. The backend checks the token with Supabase (`GET /auth/v1/user`), requires a
+   verified email, finds or creates the user, and returns the app's own JWT.
+   Everything else keeps using that JWT.
+
+A social sign-in links to an existing email/password account with the same
+email. Social-only accounts have no password (`users.password_hash` is NULL).
+Existing databases need `database/migrations/002_social_sign_in.sql`.
+
+Setup, done once in the dashboards:
+
+1. **Supabase → Authentication → URL Configuration**
+   - **Site URL:** the production frontend URL, e.g. `https://jobpreparation.online`
+   - **Redirect URLs:** add `https://jobpreparation.online/auth/callback`,
+     `https://preparationai.devmanjha.workers.dev/auth/callback` and
+     `http://localhost:5173/auth/callback`.
+2. **Each provider's developer console:** create an OAuth app whose
+   callback/redirect URL is
+   `https://dpfqcrucpbhmqmdjeatg.supabase.co/auth/v1/callback`.
+   - Google: Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application).
+   - GitHub: Settings → Developer settings → OAuth Apps.
+   - LinkedIn: LinkedIn Developers → create an app, add the product
+     "Sign In with LinkedIn using OpenID Connect".
+   - Apple: needs a paid Apple Developer account; create a Services ID with
+     "Sign in with Apple" and a private key (Supabase's Apple provider page
+     lists the exact fields).
+3. **Supabase → Authentication → Sign In / Providers:** enable Google, GitHub,
+   LinkedIn (OIDC) and Apple, pasting each provider's client ID and secret.
+4. **Backend env:** set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (section B).
+   Without them `POST /auth/supabase` answers 503.
+
+A provider that isn't enabled in Supabase fails at the redirect with an
+"Unsupported provider" error, while the others keep working.
+
 ## 3. Frontend hosting — Cloudflare Worker (static assets)
 
 The frontend is served by the `preparationai` Worker, which is connected to this
@@ -149,6 +191,8 @@ build in the Worker's **Deployments** tab).
 | `STRIPE_SECRET_KEY` | Stripe — required to boot |
 | `STRIPE_PUBLISHABLE_KEY` | Stripe — required to boot |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook pointed at `/api/v1/payments/webhook` |
+| `SUPABASE_URL` | `https://dpfqcrucpbhmqmdjeatg.supabase.co`, enables social sign-in (section 2a) |
+| `SUPABASE_PUBLISHABLE_KEY` | the same `sb_publishable_...` key as the frontend |
 | `CORS_ALLOWED_ORIGINS` | `https://jobpreparation.online` (must match the frontend's domain) |
 | `NODE_ENV` | `production` |
 | `OPENAI_MODEL` | optional, defaults to `gpt-4o` |
