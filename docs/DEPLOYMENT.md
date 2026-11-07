@@ -68,8 +68,11 @@ The root `wrangler.jsonc` configures it:
 In the dashboard (**Workers & Pages → preparationai → Settings → Build**):
 1. **Build command:** `cd frontend && npm ci && npm run build`
 2. **Deploy command:** `npx wrangler deploy` (the default)
-3. **Root directory:** leave as the repo root, where `wrangler.jsonc` lives.
-4. **Variables and secrets:** add the `VITE_*` values from section A as
+3. **Non-production branch deploy command:** `npx wrangler preview` (the
+   default). Every pushed branch, including PR branches, gets a Preview
+   deployment. That command requires the `previews` block in `wrangler.jsonc`.
+4. **Root directory:** leave as the repo root, where `wrangler.jsonc` lives.
+5. **Variables and secrets:** add the `VITE_*` values from section A as
    **Variable** entries. They are read at build time and baked into the bundle.
    `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are not needed here: the
    build authenticates with the build API token selected on the same page.
