@@ -27,8 +27,11 @@ type InterviewSession struct {
 	Status          SessionStatus `json:"status" db:"status"`
 	Tags            []string      `json:"tags" db:"tags"`
 	PaymentIntentID string        `json:"payment_intent_id,omitempty" db:"payment_intent_id"`
-	CreatedAt       time.Time     `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time     `json:"updated_at" db:"updated_at"`
+	// Score is the overall score (mean of the three feedback scores) once the
+	// session has feedback. Only GetUserSessions fills it.
+	Score     *float64  `json:"score,omitempty" db:"-"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type Question struct {
