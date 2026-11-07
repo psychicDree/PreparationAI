@@ -5,9 +5,9 @@ done outside the repository (account setup, secrets, DNS). The in-repo code and
 config changes that support it are already committed.
 
 ```
-Browser ──► Cloudflare (Pages + WAF/rate-limit/DDoS)
+Browser ──► Cloudflare (Workers + WAF/rate-limit/DDoS)
                │
-               ├──► Static React app (Cloudflare Pages)
+               ├──► Static React app (Cloudflare Worker static assets)
                │
                └──► /api  ──► Go backend (container host) ──► Supabase Postgres
                                               │
@@ -48,43 +48,42 @@ Already wired in the repo:
 - `@supabase/supabase-js` is installed.
 - `src/services/supabase.ts` exposes a lazily-created singleton via `getSupabase()`.
 - `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` are read through
-  `src/config/index.ts`. Set them in `frontend/.env.local` for local dev and in
-  the Cloudflare Pages project for production. The publishable (anon) key is
+  `src/config/index.ts`. Set them in `frontend/.env.local` for local dev and as
+  build variables on the Cloudflare Worker for production. The publishable (anon) key is
   safe to ship to the browser; data is protected by RLS, not key secrecy.
 
-## 3. Frontend hosting — Cloudflare Pages
+## 3. Frontend hosting — Cloudflare Worker (static assets)
 
-1. Create a Pages project connected to this repo.
-2. Build settings:
-   - **Build command:** `npm run build`
-   - **Build output directory:** `dist`
-   - **Root directory:** `frontend`
-3. Add the `VITE_*` environment variables in the Pages project (API URL, WS URL,
-   Stripe publishable key, Supabase URL + publishable key).
-4. SPA routing is handled by `frontend/public/_redirects`
-   (`/* /index.html 200`), so deep links resolve to the React Router app.
+The frontend is served by the `preparationai` Worker, which is connected to this
+repo with Cloudflare's Git integration (Workers Builds). Cloudflare builds and
+deploys on every push to `main`. There is no GitHub Actions workflow for it and
+no Cloudflare secrets in GitHub.
 
-There are two deployment models — pick one:
+The root `wrangler.jsonc` configures it:
+- `name` must match the Worker's name in the dashboard (`preparationai`).
+- `assets.directory` is `./frontend/dist`, the Vite build output.
+- `assets.not_found_handling: "single-page-application"` serves `index.html`
+  for unknown paths, so deep links like `/interview/123` reach React Router.
 
-- **Git integration (simplest):** connect the repo in the Cloudflare dashboard
-  with the build settings above; Cloudflare builds and deploys on every push.
-  No workflow or secrets needed.
-- **CI Direct Upload:** use the included
-  `.github/workflows/deploy-cloudflare-pages.yml`, which builds and runs
-  `wrangler pages deploy`. It requires a Pages project named `preparationai`
-  plus these repo settings:
-  - **Secrets:** `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
-  - **Variables:** `VITE_API_URL`, `VITE_WS_URL`, `VITE_STRIPE_PUBLISHABLE_KEY`,
-    `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`
-
-  `frontend/wrangler.toml` sets the project name and `dist` output directory.
+In the dashboard (**Workers & Pages → preparationai → Settings → Build**):
+1. **Build command:** `cd frontend && npm ci && npm run build`
+2. **Deploy command:** `npx wrangler deploy` (the default)
+3. **Non-production branch deploy command:** `npx wrangler preview` (the
+   default). Every pushed branch, including PR branches, gets a Preview
+   deployment. That command requires the `previews` block in `wrangler.jsonc`.
+4. **Root directory:** leave as the repo root, where `wrangler.jsonc` lives.
+5. **Variables and secrets:** add the `VITE_*` values from section A as
+   **Variable** entries. They are read at build time and baked into the bundle.
+   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are not needed here: the
+   build authenticates with the build API token selected on the same page.
 
 ## 3a. Custom domain — jobpreparation.online
 
 1. Add the domain to Cloudflare (it must be on a Cloudflare-managed zone).
-2. In the Pages project → **Custom domains**, add `jobpreparation.online`
-   (and `www` if desired). Cloudflare provisions the certificate.
-3. Host the **Go backend (API + WebSocket) separately** — Pages/Workers cannot
+2. In the `preparationai` Worker → **Settings → Domains & Routes**, add
+   `jobpreparation.online` as a custom domain (and `www` if desired).
+   Cloudflare provisions the certificate.
+3. Host the **Go backend (API + WebSocket) separately** — Workers cannot
    run the Fiber server. Use a container host (Fly.io / Railway / Render / a VM)
    and point a subdomain at it, e.g. `api.jobpreparation.online`. Proxy it
    through Cloudflare for WAF/TLS. A ready-to-use **Fly.io config lives at
@@ -118,11 +117,11 @@ For the audio-response feature, store recordings in **Cloudflare R2** or
 
 ## Required secrets & variables checklist
 
-Three destinations. **Only the `VITE_*` values go on Cloudflare** — they are
+Two destinations. **Only the `VITE_*` values go on Cloudflare** — they are
 public, build-time values baked into the JS bundle. The real secrets go on the
 backend host (Fly.io), never on Cloudflare/the frontend.
 
-### A. Cloudflare Pages → Settings → Variables and Secrets (frontend, public)
+### A. Cloudflare Worker `preparationai` → Settings → Build → Variables and secrets (frontend, public; add as **Variable**)
 
 | Variable | Value |
 |----------|-------|
@@ -137,7 +136,8 @@ backend host (Fly.io), never on Cloudflare/the frontend.
 Optional (defaults are fine): `VITE_ENABLE_AUDIO_RECORDING`,
 `VITE_ENABLE_PAYMENTS`, `VITE_ENABLE_ANALYTICS`, `VITE_API_TIMEOUT`,
 `VITE_THEME`, `VITE_LANGUAGE`, `VITE_TIMEZONE`. `VITE_*` values are compile-time
-— changing them requires a Pages rebuild.
+— changing them requires a new build (push to `main`, or retry the latest
+build in the Worker's **Deployments** tab).
 
 ### B. Backend host (Fly.io) → `fly secrets set` (real secrets — never on Cloudflare)
 
@@ -149,19 +149,9 @@ Optional (defaults are fine): `VITE_ENABLE_AUDIO_RECORDING`,
 | `STRIPE_SECRET_KEY` | Stripe — required to boot |
 | `STRIPE_PUBLISHABLE_KEY` | Stripe — required to boot |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook pointed at `/api/v1/payments/webhook` |
-| `CORS_ALLOWED_ORIGINS` | `https://jobpreparation.online` (must match the Pages domain) |
+| `CORS_ALLOWED_ORIGINS` | `https://jobpreparation.online` (must match the frontend's domain) |
 | `NODE_ENV` | `production` |
 | `OPENAI_MODEL` | optional, defaults to `gpt-4o` |
 
 `PORT` / `SERVER_HOST` are set in `backend/fly.toml`. The discrete `DB_*` vars
 are unnecessary when `DATABASE_URL` is set.
-
-### C. GitHub repo → Settings (only if using the CI deploy workflow)
-
-For `.github/workflows/deploy-cloudflare-pages.yml` to deploy automatically:
-
-- **Secrets:** `CLOUDFLARE_API_TOKEN` (scoped to *Pages: Edit*), `CLOUDFLARE_ACCOUNT_ID`
-- **Variables:** the same five `VITE_*` from section A (injected at build time)
-
-If you connect the repo directly in the Cloudflare dashboard (Git integration)
-instead, you only need section A and can skip section C.
