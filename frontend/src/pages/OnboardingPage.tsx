@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import apiService from '../services/api';
 import { getSupabase, signInWithProvider, type SocialProvider } from '../utils/supabase';
@@ -334,15 +334,13 @@ const OnboardingPage = () => {
             </p>
           </div>
 
-          {/* Terms */}
-          {authMode === 'signup' && (
-            <p className="mt-4 text-xs text-gray-500 text-center">
-              By creating an account, you agree to our{' '}
-              <a href="#" className="text-blue-600 hover:text-blue-700">Terms of Service</a>
-              {' '}and{' '}
-              <a href="#" className="text-blue-600 hover:text-blue-700">Privacy Policy</a>
-            </p>
-          )}
+          {/* Terms: shown in both modes, since social sign-in can create an account from either */}
+          <p className="mt-4 text-xs text-gray-500 text-center">
+            By continuing, you agree to our{' '}
+            <Link to="/terms" className="text-blue-600 hover:text-blue-700">Terms and Conditions</Link>
+            {' '}and{' '}
+            <Link to="/privacy" className="text-blue-600 hover:text-blue-700">Privacy Policy</Link>
+          </p>
         </div>
       </div>
     </div>
