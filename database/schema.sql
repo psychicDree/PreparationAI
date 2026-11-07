@@ -162,3 +162,21 @@ CREATE TRIGGER update_subscription_plans_updated_at BEFORE UPDATE ON subscriptio
 
 CREATE TRIGGER update_user_subscriptions_updated_at BEFORE UPDATE ON user_subscriptions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Row-Level Security. On Supabase the public schema is exposed through the Data API
+-- to anyone holding the publishable key, which ships in the frontend. RLS with no
+-- policies denies all access to those API roles. The Go backend connects as the
+-- table owner, which bypasses RLS, so it is unaffected (locally too).
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE interview_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE session_questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_responses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE session_feedback ENABLE ROW LEVEL SECURITY;
+ALTER TABLE question_bank ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subscription_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE token_blacklist ENABLE ROW LEVEL SECURITY;
+
+-- Pin the trigger function's search_path (NOW() lives in pg_catalog).
+ALTER FUNCTION update_updated_at_column() SET search_path = '';
