@@ -44,9 +44,13 @@ function App() {
         } finally {
           setLoading(false);
         }
-      } else {
-        // Ensure clean state if no token
-        resetApp();
+      } else if (useAppStore.getState().isAuthenticated) {
+        // Persisted login without a token: drop only the auth state. A full
+        // resetApp() here would also wipe the guest's onboarding session and
+        // the questions a page loaded in its own mount effect (child effects
+        // run before this one), leaving that page stuck loading.
+        setUser(null);
+        setAuthenticated(false);
       }
     };
 
