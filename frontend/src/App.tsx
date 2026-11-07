@@ -62,9 +62,9 @@ function App() {
 
   return (
     <Router>
-      <div className="min-h-screen bg-gray-50">
+      <div className="flex min-h-screen flex-col bg-canvas text-ink">
         <Header />
-        <main className="min-h-screen pt-18">
+        <main className="flex-1">
           <Routes>
             {/* 7-Screen Wireframe Flow */}
             

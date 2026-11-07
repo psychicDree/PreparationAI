@@ -4,13 +4,13 @@ import { useAppStore } from '../store/useAppStore';
 import apiService, { getApiErrorMessage } from '../services/api';
 import wsService from '../services/websocket';
 import type { Question, UserResponse } from '../types';
-import { 
-  PlayIcon, 
-  StopIcon,
-  ArrowRightIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon
-} from '@heroicons/react/24/outline';
+import { ArrowRightIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+
+const SESSION_LABELS: Record<string, string> = {
+  quick_drill: 'Quick drill',
+  standard: 'Standard',
+  deep_dive: 'Deep dive',
+};
 
 const InterviewDashboard = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -200,19 +200,20 @@ const InterviewDashboard = () => {
 
   const currentQuestion = questions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+  const isLastQuestion = currentQuestionIndex >= questions.length - 1;
+  const lowTime = timeRemaining <= 30;
+  const sessionLabel = SESSION_LABELS[currentSession?.session_type ?? 'standard'] ?? 'Standard';
+  const roleLabel = currentSession?.tags?.[0];
 
   if (loadError) {
     return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="text-center max-w-md">
-          <ExclamationTriangleIcon className="w-12 h-12 text-orange-500 mx-auto mb-4" />
-          <p className="text-gray-900 font-medium mb-2">We couldn't prepare your interview.</p>
-          <p className="text-gray-600 mb-6">{loadError}</p>
-          <button
-            onClick={() => setLoadAttempt((attempt) => attempt + 1)}
-            className="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
-          >
-            Try Again
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
+        <div className="max-w-md text-center">
+          <ExclamationTriangleIcon className="mx-auto mb-4 h-12 w-12 text-orange-500" />
+          <p className="mb-2 font-semibold text-ink">We couldn't prepare your interview.</p>
+          <p className="mb-6 text-muted">{loadError}</p>
+          <button onClick={() => setLoadAttempt((attempt) => attempt + 1)} className="btn-primary">
+            Try again
           </button>
         </div>
       </div>
@@ -221,10 +222,10 @@ const InterviewDashboard = () => {
 
   if (!currentQuestion) {
     return (
-      <div className="flex items-center justify-center min-h-96">
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-line border-t-accent" />
+          <p className="text-muted">
             {isDemo ? 'Loading interview questions...' : 'Generating your personalized interview questions...'}
           </p>
         </div>
@@ -233,185 +234,158 @@ const InterviewDashboard = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto">
-      {isDemo && (
-        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
-          These are demo questions.{' '}
-          <Link to="/onboarding" className="font-medium underline">
-            Sign in
-          </Link>{' '}
-          to get AI-generated questions and feedback tailored to your role.
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Mock Interview Session
-          </h1>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-primary-600">
-              {formatTime(timeRemaining)}
-            </div>
-            <div className="text-sm text-gray-500">remaining</div>
-          </div>
-        </div>
-        
-        {/* Progress Bar */}
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div
-            className="bg-primary-600 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          ></div>
-        </div>
-        <div className="flex justify-between text-sm text-gray-600 mt-2">
-          <span>Question {currentQuestionIndex + 1} of {questions.length}</span>
-          <span>{Math.round(progress)}% Complete</span>
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col">
+      {/* Session bar */}
+      <div className="flex h-14 items-center justify-between gap-4 border-b border-line px-4 sm:px-6">
+        <p className="truncate text-sm font-medium text-muted">
+          {sessionLabel} session{roleLabel ? ` · ${roleLabel}` : ''}
+        </p>
+        <div className="flex shrink-0 items-center gap-5">
+          <span
+            className={`rounded-lg px-3 py-1.5 text-sm font-semibold tabular-nums ${
+              lowTime ? 'bg-orange-50 text-orange-700' : 'bg-accent-soft text-ink'
+            }`}
+            aria-live="polite"
+          >
+            {formatTime(timeRemaining)} left
+          </span>
+          <Link to={isAuthenticated ? '/dashboard' : '/'} className="text-sm font-medium text-muted hover:text-ink">
+            Exit
+          </Link>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-8">
-        {/* Question Panel */}
-        <div className="lg:col-span-1">
-          <div className="card sticky top-4">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              Current Question
-            </h2>
-            
-            <div className="mb-4">
-              <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                currentQuestion.question_type === 'technical'
-                  ? 'bg-blue-100 text-blue-800'
-                  : currentQuestion.question_type === 'system_design'
-                  ? 'bg-purple-100 text-purple-800'
-                  : 'bg-green-100 text-green-800'
-              }`}>
-                {currentQuestion.question_type.replace('_', ' ').toUpperCase()}
-              </span>
-            </div>
+      <div className="flex flex-1">
+        {/* Question list */}
+        <aside className="hidden w-[300px] shrink-0 border-r border-line bg-panel px-3 py-8 lg:block" aria-label="Questions">
+          <p className="eyebrow mb-4 px-3 text-[11px]">Questions</p>
+          <ol className="space-y-1">
+            {questions.map((question, index) => (
+              <li
+                key={question.id}
+                aria-current={index === currentQuestionIndex ? 'step' : undefined}
+                className={`truncate rounded-lg px-3 py-2.5 text-sm font-medium ${
+                  index === currentQuestionIndex
+                    ? 'bg-accent-soft font-semibold text-ink'
+                    : index < currentQuestionIndex
+                      ? 'text-muted'
+                      : 'text-soft'
+                }`}
+                title={question.question_text}
+              >
+                {index + 1}. {question.question_text}
+              </li>
+            ))}
+          </ol>
+        </aside>
 
-            <p className="text-gray-700 leading-relaxed">
-              {currentQuestion.question_text}
-            </p>
-
-            {/* Quick Feedback Indicators */}
-            <div className="mt-6 pt-4 border-t border-gray-200">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">Quick Tips:</h3>
-              <div className="space-y-2 text-sm text-gray-600">
-                <div className="flex items-center">
-                  <CheckCircleIcon className="w-4 h-4 text-green-500 mr-2" />
-                  <span>Be specific and detailed</span>
-                </div>
-                <div className="flex items-center">
-                  <CheckCircleIcon className="w-4 h-4 text-green-500 mr-2" />
-                  <span>Explain your thought process</span>
-                </div>
-                <div className="flex items-center">
-                  <CheckCircleIcon className="w-4 h-4 text-green-500 mr-2" />
-                  <span>Consider edge cases</span>
-                </div>
-              </div>
+        {/* Question + answer */}
+        <section className="min-w-0 flex-1 px-4 py-10 sm:px-10 lg:px-14">
+          {isDemo && (
+            <div className="mb-8 rounded-[10px] border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+              These are demo questions.{' '}
+              <Link to="/onboarding" className="font-semibold underline underline-offset-2">
+                Sign in
+              </Link>{' '}
+              to get AI-generated questions and feedback tailored to your role.
             </div>
+          )}
+
+          <p className="eyebrow">
+            Question {currentQuestionIndex + 1} of {questions.length}
+          </p>
+          <div className="mt-3 h-1.5 rounded-full bg-line" role="progressbar" aria-valuenow={Math.round(progress)} aria-valuemin={0} aria-valuemax={100}>
+            <div className="h-full rounded-full bg-accent transition-all duration-300" style={{ width: `${progress}%` }} />
           </div>
-        </div>
 
-        {/* Response Panel */}
-        <div className="lg:col-span-2">
-          <div className="card">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">
-              Your Response
-            </h2>
+          <h1 className="mt-8 max-w-3xl text-2xl font-semibold leading-tight tracking-[-0.015em] text-ink sm:text-[30px]">
+            {currentQuestion.question_text}
+          </h1>
 
-            {/* Text Response */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Written Response
-              </label>
-              <textarea
-                value={responseText}
-                onChange={(e) => setResponseText(e.target.value)}
-                placeholder="Type your answer here... Be detailed and explain your thought process."
-                className="w-full h-64 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
-              />
-            </div>
+          <label htmlFor="answer" className="mt-8 block text-[13px] font-medium text-muted">
+            Your answer
+          </label>
+          <div className="relative mt-2.5">
+            <textarea
+              id="answer"
+              value={responseText}
+              onChange={(e) => setResponseText(e.target.value)}
+              placeholder="Type your answer here... Be detailed and explain your thought process."
+              className="h-72 w-full resize-none rounded-xl border border-line bg-field px-6 py-5 leading-relaxed text-ink placeholder-soft focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+            />
+            <span className="pointer-events-none absolute bottom-3.5 right-4 text-xs font-medium text-soft">
+              {responseText.length} characters
+            </span>
+          </div>
 
-            {/* Audio Recording */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Audio Response (Optional)
-              </label>
-              <div className="flex items-center space-x-4">
-                {!isRecording ? (
-                  <button
-                    onClick={handleStartRecording}
-                    className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                  >
-                    <PlayIcon className="w-5 h-5" />
-                    <span>Start Recording</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleStopRecording}
-                    className="flex items-center space-x-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
-                  >
-                    <StopIcon className="w-5 h-5" />
-                    <span>Stop Recording</span>
-                  </button>
-                )}
-                
-                {isRecording && (
-                  <div className="flex items-center space-x-2 text-red-600">
-                    <div className="w-3 h-3 bg-red-600 rounded-full animate-pulse"></div>
-                    <span className="text-sm">Recording...</span>
-                  </div>
-                )}
-              </div>
-            </div>
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={isRecording ? handleStopRecording : handleStartRecording}
+              className="inline-flex items-center gap-2.5 rounded-[10px] border border-line bg-panel px-4 py-3 text-sm font-semibold text-ink transition-colors hover:border-soft"
+              aria-pressed={isRecording}
+            >
+              <span className={`h-2.5 w-2.5 rounded-full bg-[#FF5F57] ${isRecording ? 'animate-pulse' : ''}`} />
+              {isRecording ? 'Stop recording' : 'Record answer'}
+            </button>
 
-            {/* Submit Button */}
-            <div className="flex justify-between items-center">
-              <div className="text-sm text-gray-500">
-                {submitError && (
-                  <div className="flex items-center text-red-600">
-                    <ExclamationTriangleIcon className="w-4 h-4 mr-1" />
-                    <span>{submitError}</span>
-                  </div>
-                )}
-                {!submitError && timeRemaining <= 30 && (
-                  <div className="flex items-center text-orange-600">
-                    <ExclamationTriangleIcon className="w-4 h-4 mr-1" />
-                    <span>Time running low!</span>
-                  </div>
-                )}
-              </div>
-              
+            <div className="flex items-center gap-4">
+              {submitError && (
+                <span className="flex items-center text-sm text-red-700" role="alert">
+                  <ExclamationTriangleIcon className="mr-1 h-4 w-4" />
+                  {submitError}
+                </span>
+              )}
+              {!submitError && lowTime && (
+                <span className="flex items-center text-sm text-orange-700">
+                  <ExclamationTriangleIcon className="mr-1 h-4 w-4" />
+                  Time running low!
+                </span>
+              )}
               <button
                 onClick={handleSubmitResponse}
                 disabled={!responseText.trim() || isSubmitting}
-                className={`flex items-center space-x-2 px-6 py-3 rounded-lg font-medium transition-colors ${
-                  !responseText.trim() || isSubmitting
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-primary-600 hover:bg-primary-700 text-white'
-                }`}
+                className="btn-primary"
               >
                 {isSubmitting ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Submitting...</span>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    Submitting...
                   </>
                 ) : (
                   <>
-                    <span>
-                      {currentQuestionIndex < questions.length - 1 ? 'Next Question' : 'Finish Interview'}
-                    </span>
-                    <ArrowRightIcon className="w-5 h-5" />
+                    {isLastQuestion ? 'Finish interview' : 'Next question'}
+                    <ArrowRightIcon className="h-4 w-4" />
                   </>
                 )}
               </button>
             </div>
           </div>
-        </div>
+        </section>
+
+        {/* Tips + session */}
+        <aside className="hidden w-[340px] shrink-0 border-l border-line bg-panel px-7 py-8 xl:block">
+          <p className="eyebrow text-[11px]">Quick tips</p>
+          <ul className="mt-4 list-disc space-y-2.5 pl-4 text-[15px] text-ink marker:text-soft">
+            <li>Be specific and detailed</li>
+            <li>Explain your thought process</li>
+            <li>Consider edge cases</li>
+          </ul>
+
+          <p className="eyebrow mt-9 text-[11px]">Session</p>
+          <dl className="mt-3.5 space-y-4 rounded-xl border border-line bg-field p-5 text-sm">
+            {[
+              ['Type', sessionLabel],
+              ['Questions', String(questions.length)],
+              ['Time per question', '2 min'],
+            ].map(([label, value]) => (
+              <div key={label} className="flex justify-between">
+                <dt className="text-muted">{label}</dt>
+                <dd className="font-semibold text-ink">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </aside>
       </div>
     </div>
   );
