@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"preparation-ai/internal/database"
@@ -53,11 +54,22 @@ func CreateInterviewSession(userID string, req models.CreateSessionRequest) (*mo
 
 // GetUserSessions retrieves all sessions for a user
 func GetUserSessions(userID string) ([]models.InterviewSession, error) {
+	// The score comes from the session's latest feedback (feedback is generated
+	// once per session, but LATERAL ... LIMIT 1 keeps one row per session even if
+	// a duplicate ever exists).
 	query := `
-		SELECT id, user_id, session_type, status, tags, payment_intent_id, created_at, updated_at
-		FROM interview_sessions
-		WHERE user_id = $1
-		ORDER BY created_at DESC
+		SELECT s.id, s.user_id, s.session_type, s.status, s.tags, s.payment_intent_id,
+		       s.created_at, s.updated_at, f.score
+		FROM interview_sessions s
+		LEFT JOIN LATERAL (
+			SELECT (technical_score + communication_score + problem_solving_score) / 3.0 AS score
+			FROM session_feedback
+			WHERE session_id = s.id
+			ORDER BY created_at DESC
+			LIMIT 1
+		) f ON true
+		WHERE s.user_id = $1
+		ORDER BY s.created_at DESC
 	`
 
 	rows, err := database.DB.Query(query, userID)
@@ -70,6 +82,7 @@ func GetUserSessions(userID string) ([]models.InterviewSession, error) {
 	for rows.Next() {
 		var session models.InterviewSession
 		var paymentIntentID sql.NullString
+		var score sql.NullFloat64
 
 		err := rows.Scan(
 			&session.ID,
@@ -80,6 +93,7 @@ func GetUserSessions(userID string) ([]models.InterviewSession, error) {
 			&paymentIntentID,
 			&session.CreatedAt,
 			&session.UpdatedAt,
+			&score,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan session: %w", err)
@@ -87,6 +101,10 @@ func GetUserSessions(userID string) ([]models.InterviewSession, error) {
 
 		if paymentIntentID.Valid {
 			session.PaymentIntentID = paymentIntentID.String
+		}
+		if score.Valid {
+			v := math.Round(score.Float64*10) / 10
+			session.Score = &v
 		}
 
 		sessions = append(sessions, session)

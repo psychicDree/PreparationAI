@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import apiService from '../services/api';
 import { 
@@ -351,10 +351,10 @@ const PricingPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             <div className="bg-white rounded-lg p-6 shadow-sm">
               <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                Can I change my plan anytime?
+                How do payments work?
               </h3>
               <p className="text-gray-600">
-                Yes, you can upgrade or downgrade your plan at any time. Changes will be reflected in your next billing cycle.
+                Paid interview sessions are a one-time payment. The price is shown before you pay, and payments are processed by Stripe.
               </p>
             </div>
             
@@ -363,7 +363,8 @@ const PricingPage = () => {
                 What happens to my data if I cancel?
               </h3>
               <p className="text-gray-600">
-                Your interview history and progress data will be preserved for 30 days after cancellation, giving you time to reactivate.
+                Your sessions and reports stay in your account until you ask us to delete them. See our{' '}
+                <Link to="/privacy" className="text-accent-text hover:text-ink">Privacy Policy</Link>.
               </p>
             </div>
             
@@ -372,7 +373,8 @@ const PricingPage = () => {
                 Do you offer refunds?
               </h3>
               <p className="text-gray-600">
-                We offer a 30-day money-back guarantee for all paid plans. Contact support if you're not satisfied.
+                If a paid session doesn't work because of a problem on our side, we'll re-run it or refund it. See our{' '}
+                <Link to="/terms" className="text-accent-text hover:text-ink">Terms and Conditions</Link>.
               </p>
             </div>
             
