@@ -2,6 +2,7 @@ package services
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -62,7 +63,8 @@ func GetUserByEmail(email string) (*models.User, error) {
 	`
 
 	var user models.User
-	var passwordHash string
+	// NULL for accounts created through social sign-in, which have no password.
+	var passwordHash sql.NullString
 	err := database.DB.QueryRow(query, email).Scan(
 		&user.ID,
 		&user.Email,
@@ -79,8 +81,71 @@ func GetUserByEmail(email string) (*models.User, error) {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Store the password hash in the user struct for validation
-	user.Password = passwordHash
+	// Store the password hash in the user struct for validation. It stays empty
+	// for password-less accounts, so password login fails for them.
+	user.Password = passwordHash.String
+	return &user, nil
+}
+
+// FindOrCreateSupabaseUser returns the app user for a verified Supabase Auth
+// user: the account already linked to that Supabase ID, otherwise an existing
+// account with the same (verified) email, which gets linked, otherwise a new
+// password-less account.
+func FindOrCreateSupabaseUser(su *SupabaseUser) (*models.User, error) {
+	// Two attempts: a concurrent first sign-in can win the insert race, and the
+	// second pass then finds the row it created.
+	for attempt := 0; attempt < 2; attempt++ {
+		user, err := scanUser(database.DB.QueryRow(`
+			SELECT id, email, name, created_at, updated_at
+			FROM users WHERE supabase_user_id = $1
+		`, su.ID))
+		if err == nil {
+			return user, nil
+		}
+		if err != sql.ErrNoRows {
+			return nil, fmt.Errorf("failed to look up user: %w", err)
+		}
+
+		user, err = scanUser(database.DB.QueryRow(`
+			UPDATE users SET supabase_user_id = $1, updated_at = $2
+			WHERE lower(email) = $3 AND supabase_user_id IS NULL
+			RETURNING id, email, name, created_at, updated_at
+		`, su.ID, time.Now(), su.Email))
+		if err == nil {
+			return user, nil
+		}
+		if err != sql.ErrNoRows {
+			return nil, fmt.Errorf("failed to link user: %w", err)
+		}
+
+		now := time.Now()
+		user, err = scanUser(database.DB.QueryRow(`
+			INSERT INTO users (id, email, name, password_hash, supabase_user_id, created_at, updated_at)
+			VALUES ($1, $2, $3, NULL, $4, $5, $5)
+			ON CONFLICT DO NOTHING
+			RETURNING id, email, name, created_at, updated_at
+		`, uuid.New().String(), su.Email, su.Name, su.ID, now))
+		if err == nil {
+			return user, nil
+		}
+		if err != sql.ErrNoRows {
+			return nil, fmt.Errorf("failed to create user: %w", err)
+		}
+	}
+
+	// The email belongs to an account linked to a different Supabase user.
+	return nil, ErrEmailLinkedElsewhere
+}
+
+// ErrEmailLinkedElsewhere is returned when a social sign-in's email already
+// belongs to an account linked to a different Supabase user.
+var ErrEmailLinkedElsewhere = errors.New("this email is already linked to a different sign-in")
+
+func scanUser(row *sql.Row) (*models.User, error) {
+	var user models.User
+	if err := row.Scan(&user.ID, &user.Email, &user.Name, &user.CreatedAt, &user.UpdatedAt); err != nil {
+		return nil, err
+	}
 	return &user, nil
 }
 

@@ -71,6 +71,8 @@ Layering inside `internal/`:
 
 Auth uses JWTs (`github.com/golang-jwt/jwt/v4` + `gofiber/jwt`); logout relies on a `token_blacklist` table rather than stateless expiry alone.
 
+Social sign-in (Google, GitHub, LinkedIn, Apple) goes through Supabase Auth: the frontend (`src/utils/supabase.ts`, `pages/AuthCallbackPage.tsx`) runs the PKCE OAuth flow and posts the Supabase access token to the public `POST /api/v1/auth/supabase`, which verifies it with Supabase (`services/supabase_auth.go`, `GET /auth/v1/user`), links or creates the user by Supabase ID or verified email (`FindOrCreateSupabaseUser`), and returns the app's own JWT. Social-only users have `password_hash` NULL. Backend env: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` (optional; endpoint returns 503 without them).
+
 ### Frontend structure
 - `src/App.tsx` defines the router and the 7-screen flow: Landing → Onboarding → RoleSetup → Warmup → Payment → Interview → Feedback, plus Dashboard and Pricing. `ProtectedRoute` is currently a pass-through (guest sessions are allowed; pages handle their own gating).
 - `src/store/useAppStore.ts` — Zustand store with `persist` middleware; it is the single global store. It only persists user data when authenticated and always persists the current session to preserve the onboarding flow, and has a `migrate` hook that clears stale persisted state on version bumps. Prefer the exported selector hooks (`useUser`, `useCurrentSession`, `useQuestions`, etc.) over reading raw state.

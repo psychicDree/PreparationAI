@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"errors"
+	"log"
+
 	"preparation-ai/internal/models"
 	"preparation-ai/internal/services"
 
@@ -62,6 +65,56 @@ func Login(c *fiber.Ctx) error {
 
 	// Clear password from response
 	user.Password = ""
+
+	token, err := services.GenerateJWT(user.ID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to generate token",
+		})
+	}
+
+	return c.JSON(models.AuthResponse{
+		Token: token,
+		User:  *user,
+	})
+}
+
+// SupabaseLogin exchanges a Supabase Auth access token (from Google, GitHub,
+// LinkedIn or Apple sign-in in the browser) for this app's own JWT, creating or
+// linking the user account. The rest of the API keeps using the app JWT.
+func SupabaseLogin(c *fiber.Ctx) error {
+	var req struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := c.BodyParser(&req); err != nil || req.AccessToken == "" {
+		return c.Status(400).JSON(fiber.Map{
+			"error": "access_token is required",
+		})
+	}
+
+	supabaseUser, err := services.VerifySupabaseToken(req.AccessToken)
+	if err != nil {
+		switch {
+		case errors.Is(err, services.ErrSupabaseNotConfigured):
+			return c.Status(503).JSON(fiber.Map{"error": "Social sign-in is not configured"})
+		case errors.Is(err, services.ErrInvalidSupabaseSession):
+			return c.Status(401).JSON(fiber.Map{"error": "Invalid or expired sign-in session"})
+		case errors.Is(err, services.ErrSupabaseEmailUnverified):
+			return c.Status(403).JSON(fiber.Map{"error": "Your email address is not verified with this provider"})
+		default:
+			log.Printf("supabase login: %v", err)
+			return c.Status(502).JSON(fiber.Map{"error": "Could not verify sign-in"})
+		}
+	}
+
+	user, err := services.FindOrCreateSupabaseUser(supabaseUser)
+	if err != nil {
+		if errors.Is(err, services.ErrEmailLinkedElsewhere) {
+			return c.Status(409).JSON(fiber.Map{"error": err.Error()})
+		}
+		log.Printf("supabase login: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to sign in"})
+	}
 
 	token, err := services.GenerateJWT(user.ID)
 	if err != nil {

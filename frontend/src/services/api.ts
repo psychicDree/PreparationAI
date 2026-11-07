@@ -110,6 +110,17 @@ class ApiService {
     return response.data;
   }
 
+  // Exchanges a Supabase Auth session (social sign-in) for this app's JWT.
+  async loginWithSupabase(accessToken: string): Promise<AuthResponse> {
+    const response: AxiosResponse<AuthResponse> = await this.api.post('/auth/supabase', {
+      access_token: accessToken,
+    });
+    if (response.data.token) {
+      localStorage.setItem('auth_token', response.data.token);
+    }
+    return response.data;
+  }
+
   async logout(): Promise<void> {
     await this.api.post('/auth/logout');
     localStorage.removeItem('auth_token');

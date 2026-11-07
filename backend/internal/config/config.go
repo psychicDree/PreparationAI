@@ -25,8 +25,9 @@ type Config struct {
 	JWT JWTConfig `json:"jwt"`
 
 	// External services
-	OpenAI OpenAIConfig `json:"openai"`
-	Stripe StripeConfig `json:"stripe"`
+	OpenAI   OpenAIConfig   `json:"openai"`
+	Stripe   StripeConfig   `json:"stripe"`
+	Supabase SupabaseConfig `json:"supabase"`
 
 	// Environment
 	Environment string `json:"environment"`
@@ -77,6 +78,13 @@ type OpenAIConfig struct {
 	// BaseURL may point at any OpenAI-compatible endpoint, including a local engine such as Ollama.
 	// Mock returns sample questions and feedback instead of calling OpenAI (local development only).
 	Mock bool `json:"mock"`
+}
+
+// SupabaseConfig is used to verify Supabase Auth sessions (social sign-in).
+// Optional: when URL is empty, the /auth/supabase endpoint is disabled.
+type SupabaseConfig struct {
+	URL            string `json:"url"`
+	PublishableKey string `json:"publishable_key"`
 }
 
 type StripeConfig struct {
@@ -151,6 +159,10 @@ func Load() *Config {
 			SecretKey:      getEnv("STRIPE_SECRET_KEY", ""),
 			PublishableKey: getEnv("STRIPE_PUBLISHABLE_KEY", ""),
 			WebhookSecret:  getEnv("STRIPE_WEBHOOK_SECRET", ""),
+		},
+		Supabase: SupabaseConfig{
+			URL:            getEnv("SUPABASE_URL", ""),
+			PublishableKey: getEnv("SUPABASE_PUBLISHABLE_KEY", ""),
 		},
 		Environment: getEnv("NODE_ENV", "development"),
 	}

@@ -89,6 +89,7 @@ func main() {
 	auth := api.Group("/auth")
 	auth.Post("/register", handlers.Register)
 	auth.Post("/login", handlers.Login)
+	auth.Post("/supabase", handlers.SupabaseLogin) // social sign-in via Supabase Auth
 	auth.Post("/logout", middleware.Protected(), handlers.Logout)
 
 	// Protected routes

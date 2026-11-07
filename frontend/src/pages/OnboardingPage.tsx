@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import apiService from '../services/api';
+import { getSupabase, signInWithProvider, type SocialProvider } from '../utils/supabase';
 import { 
   EyeIcon, 
   EyeSlashIcon,
@@ -86,17 +87,17 @@ const OnboardingPage = () => {
     }
   };
 
-  const handleOAuthAuth = async (provider: 'google' | 'github' | 'stackoverflow') => {
+  const socialSignInEnabled = getSupabase() !== null;
+
+  // Leaves the app for the provider; /auth/callback finishes the sign-in.
+  const handleOAuthAuth = async (provider: SocialProvider) => {
     setIsLoading(true);
     setError('');
-    
+
     try {
-      // For now, we'll simulate OAuth flow
-      // In production, this would redirect to the OAuth provider
-      setError(`${provider} OAuth integration coming soon!`);
-    } catch {
-      setError(`Failed to authenticate with ${provider}`);
-    } finally {
+      await signInWithProvider(provider, intendedDestination);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start sign-in. Please try again.');
       setIsLoading(false);
     }
   };
@@ -143,6 +144,7 @@ const OnboardingPage = () => {
             </p>
           </div>
 
+          {socialSignInEnabled && (<>
           {/* OAuth Buttons */}
           <div className="space-y-3 mb-6">
             <button
@@ -171,14 +173,25 @@ const OnboardingPage = () => {
             </button>
 
             <button
-              onClick={() => handleOAuthAuth('stackoverflow')}
+              onClick={() => handleOAuthAuth('linkedin_oidc')}
               disabled={isLoading}
               className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M15.725 0l-1.72 1.277 6.39 8.588 1.716-1.277L15.725 0zm-3.94 3.418l-1.723 1.276 6.405 8.6 1.716-1.278L11.785 3.418zm-3.99 3.436l-1.723 1.276 6.419 8.6 1.715-1.278L7.795 6.854zM3.764 10.32l-1.72 1.277 6.4 8.588 1.716-1.277L3.764 10.32zm-.623 3.44l-1.72 1.277 6.4 8.588 1.716-1.277L3.141 13.76zm8.644-3.44l-1.72 1.277 6.4 8.588 1.716-1.277L11.785 10.32zm-.623 3.44l-1.72 1.277 6.4 8.588 1.716-1.277L11.162 13.76z"/>
+              <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="#0A66C2" d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0z"/>
               </svg>
-              Continue with Stack Overflow
+              Continue with LinkedIn
+            </button>
+
+            <button
+              onClick={() => handleOAuthAuth('apple')}
+              disabled={isLoading}
+              className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg className="w-5 h-5 mr-3" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M16.37 1.43c0 1.14-.47 2.23-1.2 3.03-.79.86-2.08 1.53-3.13 1.44-.13-1.11.43-2.27 1.17-3.04.82-.86 2.21-1.5 3.16-1.43zM20.5 17.21c-.57 1.31-.84 1.9-1.58 3.06-1.03 1.62-2.48 3.63-4.28 3.65-1.6.02-2.01-1.04-4.18-1.03-2.17.01-2.62 1.05-4.22 1.03-1.8-.02-3.17-1.84-4.2-3.46C-.85 15.94-1.15 10.66.75 7.83 2.1 5.82 4.23 4.64 6.23 4.64c2.03 0 3.31 1.11 4.99 1.11 1.63 0 2.62-1.11 4.97-1.11 1.78 0 3.66.97 5 2.64-4.39 2.41-3.68 8.68-.69 9.93z"/>
+              </svg>
+              Continue with Apple
             </button>
           </div>
 
@@ -191,6 +204,7 @@ const OnboardingPage = () => {
               <span className="px-2 bg-white text-gray-500">Or continue with email</span>
             </div>
           </div>
+          </>)}
 
           {/* Email Form */}
           <form onSubmit={handleEmailAuth} className="space-y-4">
