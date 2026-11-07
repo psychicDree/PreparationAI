@@ -88,6 +88,11 @@ type SupabaseConfig struct {
 }
 
 type StripeConfig struct {
+	// RequirePayment makes question generation require a paid session
+	// (PAYMENTS_REQUIRED). Off by default so sessions stay free until the
+	// payment flow is live.
+	RequirePayment bool `json:"require_payment"`
+
 	SecretKey      string `json:"secret_key"`
 	PublishableKey string `json:"publishable_key"`
 	WebhookSecret  string `json:"webhook_secret"`
@@ -159,6 +164,7 @@ func Load() *Config {
 			SecretKey:      getEnv("STRIPE_SECRET_KEY", ""),
 			PublishableKey: getEnv("STRIPE_PUBLISHABLE_KEY", ""),
 			WebhookSecret:  getEnv("STRIPE_WEBHOOK_SECRET", ""),
+			RequirePayment: getBoolEnv("PAYMENTS_REQUIRED", false),
 		},
 		Supabase: SupabaseConfig{
 			URL:            getEnv("SUPABASE_URL", ""),

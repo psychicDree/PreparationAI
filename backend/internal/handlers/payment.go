@@ -9,17 +9,20 @@ import (
 	"github.com/stripe/stripe-go/v72"
 	"github.com/stripe/stripe-go/v72/webhook"
 	"preparation-ai/internal/config"
+	"preparation-ai/internal/models"
 	"preparation-ai/internal/services"
 )
 
 // CreatePaymentIntent starts a payment for one of the caller's sessions. The
-// amount comes from the session's type on the server; any client-supplied
-// amount or session type is ignored.
+// optional session_type sets what the user is buying (allowed only while the
+// session is unpaid); the amount always comes from the session's stored type
+// on the server, and any client-supplied amount is ignored.
 func CreatePaymentIntent(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)
 
 	var req struct {
-		SessionID string `json:"session_id"`
+		SessionID   string             `json:"session_id"`
+		SessionType models.SessionType `json:"session_type"`
 	}
 
 	if err := c.BodyParser(&req); err != nil {
@@ -43,6 +46,21 @@ func CreatePaymentIntent(c *fiber.Ctx) error {
 		return c.Status(409).JSON(fiber.Map{
 			"error": "Session is already paid",
 		})
+	}
+
+	if req.SessionType != "" && req.SessionType != session.SessionType {
+		if !isValidSessionType(req.SessionType) {
+			return c.Status(400).JSON(fiber.Map{
+				"error": "Invalid session type",
+			})
+		}
+		if err := services.SetUnpaidSessionType(session.ID, req.SessionType); err != nil {
+			if errors.Is(err, services.ErrSessionAlreadyPaid) {
+				return c.Status(409).JSON(fiber.Map{"error": "Session is already paid"})
+			}
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to update session"})
+		}
+		session.SessionType = req.SessionType
 	}
 
 	sessionType := string(session.SessionType)
@@ -80,7 +98,8 @@ func ConfirmPayment(c *fiber.Ctx) error {
 		})
 	}
 
-	if _, err := services.GetSessionByID(req.SessionID, userID); err != nil {
+	session, err := services.GetSessionByID(req.SessionID, userID)
+	if err != nil {
 		return c.Status(404).JSON(fiber.Map{
 			"error": "Session not found",
 		})
@@ -89,7 +108,7 @@ func ConfirmPayment(c *fiber.Ctx) error {
 	// ConfirmPayment verifies the PaymentIntent with Stripe, and that it was
 	// created for this session and user, before activating the session, so a
 	// client cannot mark itself paid.
-	if err := services.ConfirmPayment(req.PaymentIntentID, req.SessionID, userID); err != nil {
+	if err := services.ConfirmPayment(req.PaymentIntentID, req.SessionID, userID, string(session.SessionType)); err != nil {
 		if errors.Is(err, services.ErrSessionAlreadyPaid) {
 			return c.Status(409).JSON(fiber.Map{
 				"error": "Session is already paid with a different payment",
@@ -125,6 +144,17 @@ func StripeWebhook(c *fiber.Ctx) error {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid payload"})
 		}
 		if sessionID := pi.Metadata["session_id"]; sessionID != "" {
+			sessionType, err := services.GetSessionType(sessionID)
+			if err != nil {
+				// Returning 500 lets Stripe retry the delivery.
+				return c.Status(500).JSON(fiber.Map{"error": "Failed to load session"})
+			}
+			if err := services.VerifyWebhookPayment(&pi, string(sessionType)); err != nil {
+				// The session's type changed after this payment was started, so it
+				// doesn't cover the session. Retrying won't help; leave it for a refund.
+				log.Printf("stripe webhook: %v (session %s, payment %s); needs a refund", err, sessionID, pi.ID)
+				return c.JSON(fiber.Map{"received": true})
+			}
 			if err := services.MarkSessionPaid(sessionID, pi.ID); err != nil {
 				if errors.Is(err, services.ErrSessionAlreadyPaid) {
 					// A second successful payment for an already-paid session:

@@ -135,6 +135,36 @@ func GetSessionByID(sessionID, userID string) (*models.InterviewSession, error) 
 	return &session, nil
 }
 
+// SetUnpaidSessionType changes a session's type, which sets its price, but only
+// while it is unpaid; a paid session's type is locked.
+func SetUnpaidSessionType(sessionID string, sessionType models.SessionType) error {
+	result, err := database.DB.Exec(`
+		UPDATE interview_sessions SET session_type = $2, updated_at = $3
+		WHERE id = $1 AND payment_intent_id IS NULL
+	`, sessionID, sessionType, time.Now())
+	if err != nil {
+		return fmt.Errorf("failed to set session type: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to set session type: %w", err)
+	}
+	if rows == 0 {
+		return ErrSessionAlreadyPaid
+	}
+	return nil
+}
+
+// GetSessionType returns a session's type without an ownership check, for
+// trusted callers such as the signed Stripe webhook.
+func GetSessionType(sessionID string) (models.SessionType, error) {
+	var sessionType models.SessionType
+	if err := database.DB.QueryRow(`SELECT session_type FROM interview_sessions WHERE id = $1`, sessionID).Scan(&sessionType); err != nil {
+		return "", fmt.Errorf("failed to get session type: %w", err)
+	}
+	return sessionType, nil
+}
+
 // ErrSessionAlreadyPaid is returned by MarkSessionPaid when the session is
 // already linked to a different PaymentIntent.
 var ErrSessionAlreadyPaid = errors.New("session already paid with a different payment")

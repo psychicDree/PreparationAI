@@ -152,6 +152,40 @@ share the auth domain.
 - Optionally use **Cloudflare Hyperdrive** in front of Supabase Postgres to pool
   and accelerate connections from edge compute.
 
+## 5a. Payments — Stripe
+
+Each interview session is a one-time payment, priced on the server by session
+type (quick drill $5, standard $9, deep dive $15; `GetSessionPricing`). No Stripe
+products or prices are needed.
+
+The flow:
+
+1. `/payment` sends the chosen session to `POST /payments/create-intent` with
+   its `session_type`. The server stores the type (only while the session is
+   unpaid), prices it, and creates a PaymentIntent bound to the session and
+   user in its metadata.
+2. The page shows Stripe's Payment Element. Cards that need 3-D Secure return to
+   `/payment?payment_intent=...&redirect_status=...`, which the page finishes.
+3. `POST /payments/confirm`, and the `payment_intent.succeeded` webhook, check
+   with Stripe that the payment succeeded, belongs to that session and user,
+   and paid exactly the current price of its type. Then the session is marked
+   paid and its type is locked.
+4. With `PAYMENTS_REQUIRED=true`, question generation returns 402 until the
+   session is paid.
+
+Guests and the local placeholder session skip payment and get the demo interview.
+
+To go live (test with `pk_test_`/`sk_test_` keys first):
+
+1. Backend: set `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY` (section B).
+   Never put the secret key in the frontend, the repo or chat.
+2. Stripe Dashboard → Developers → Webhooks: add
+   `https://api.jobpreparation.online/api/v1/payments/webhook` for
+   `payment_intent.succeeded`, and set its signing secret as `STRIPE_WEBHOOK_SECRET`.
+3. Cloudflare Worker variables (section A): `VITE_STRIPE_PUBLISHABLE_KEY` and
+   `VITE_ENABLE_PAYMENTS=true`, then rebuild.
+4. Backend: `PAYMENTS_REQUIRED=true`.
+
 ## 5. Object storage (optional) — audio recordings
 
 For the audio-response feature, store recordings in **Cloudflare R2** or
@@ -191,6 +225,7 @@ build in the Worker's **Deployments** tab).
 | `STRIPE_SECRET_KEY` | Stripe — required to boot |
 | `STRIPE_PUBLISHABLE_KEY` | Stripe — required to boot |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook pointed at `/api/v1/payments/webhook` |
+| `PAYMENTS_REQUIRED` | `true` once checkout is live (section 5a); `false` keeps sessions free |
 | `SUPABASE_URL` | `https://dpfqcrucpbhmqmdjeatg.supabase.co`, enables social sign-in (section 2a) |
 | `SUPABASE_PUBLISHABLE_KEY` | the same `sb_publishable_...` key as the frontend |
 | `CORS_ALLOWED_ORIGINS` | `https://jobpreparation.online` (must match the frontend's domain) |
