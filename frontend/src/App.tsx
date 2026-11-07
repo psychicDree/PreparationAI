@@ -14,6 +14,8 @@ import FeedbackPage from './pages/FeedbackPage';
 import DashboardPage from './pages/DashboardPage';
 import PricingPage from './pages/PricingPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import TermsPage from './pages/TermsPage';
 
 // Layout components
 import Header from './components/Header';
@@ -77,6 +79,10 @@ function App() {
             
             {/* Pricing Page - Subscription plans */}
             <Route path="/pricing" element={<PricingPage />} />
+
+            {/* Legal pages (public; linked from the footer and sign-up) */}
+            <Route path="/privacy" element={<PrivacyPolicyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
             
             
             {/* 2. Role Setup - Skill tags and industry/role selection */}
