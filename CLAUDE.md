@@ -97,3 +97,5 @@ Auth uses JWTs (`github.com/golang-jwt/jwt/v4` + `gofiber/jwt`); logout relies o
 ## Deployment
 
 `scripts/deploy.sh -e <staging|production> -p <aws|gcp|azure|k8s>` drives deploys. Infra-as-code: `infrastructure/aws/terraform/` (Terraform), `k8s/preparation-ai.yaml` (Kubernetes manifest), and per-cloud GitHub Actions workflows (`deploy-aws.yml`, `deploy-gcp.yml`, `deploy-azure.yml`). Production compose is `docker-compose.prod.yml` with `nginx.conf` as the edge.
+
+The production frontend is served by the `preparationai` Cloudflare Worker (static assets), built by Cloudflare's Git integration from the root `wrangler.jsonc` (`assets.directory: ./frontend/dist`, SPA fallback). Build command and `VITE_*` build variables live in the Worker's dashboard settings, not in GitHub. See `docs/DEPLOYMENT.md`.

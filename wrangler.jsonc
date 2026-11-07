@@ -1,12 +1,18 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "preparation-ai",
+  // Must match the Worker's name in the Cloudflare dashboard.
+  "name": "preparationai",
   "compatibility_date": "2026-05-31",
   "observability": {
     "enabled": true
   },
+  // Serves the built React app. Cloudflare's Git build runs the dashboard
+  // build command (cd frontend && npm ci && npm run build) before deploying.
   "assets": {
-    "directory": "frontend"
+    "directory": "./frontend/dist",
+    // Unknown paths (e.g. /interview/123) get index.html so React Router can
+    // handle them.
+    "not_found_handling": "single-page-application"
   },
   "compatibility_flags": [
     "nodejs_compat"
